@@ -319,6 +319,225 @@ public:
         }
     }
 
+    // Get element by integer index: arr[5] or arr[-1]
+    // For 1D arrays, returns a scalar; for ND arrays, returns a sub-array view
+    py::object getitem_int(py::ssize_t index) const {
+        if (shape_.empty()) {
+            throw std::runtime_error("Cannot index a 0-dimensional array");
+        }
+
+        // Handle negative indices
+        if (index < 0) {
+            index += shape_[0];
+        }
+        if (index < 0 || index >= shape_[0]) {
+            throw std::out_of_range("Index out of bounds");
+        }
+
+        // Compute pointer to element
+        char const* base_ptr = static_cast<char const*>(data());
+        char const* elem_ptr = base_ptr + index * strides_[0];
+
+        if (shape_.size() == 1) {
+            // 1D array: return scalar
+            char kind = dtype_.kind();
+            if (kind == 'f') {
+                if (dtype_.itemsize() == 8) {
+                    return py::cast(*reinterpret_cast<double const*>(elem_ptr));
+                } else if (dtype_.itemsize() == 4) {
+                    return py::cast(*reinterpret_cast<float const*>(elem_ptr));
+                }
+            } else if (kind == 'i') {
+                if (dtype_.itemsize() == 8) {
+                    return py::cast(*reinterpret_cast<int64_t const*>(elem_ptr));
+                } else if (dtype_.itemsize() == 4) {
+                    return py::cast(*reinterpret_cast<int32_t const*>(elem_ptr));
+                }
+            } else if (kind == 'u') {
+                if (dtype_.itemsize() == 8) {
+                    return py::cast(*reinterpret_cast<uint64_t const*>(elem_ptr));
+                } else if (dtype_.itemsize() == 4) {
+                    return py::cast(*reinterpret_cast<uint32_t const*>(elem_ptr));
+                }
+            } else if (kind == 'b') {
+                return py::cast(*reinterpret_cast<bool const*>(elem_ptr));
+            }
+            throw std::runtime_error("Unsupported dtype for indexing");
+        } else {
+            // ND array: return sub-array view
+            std::vector<py::ssize_t> new_shape(shape_.begin() + 1, shape_.end());
+            std::vector<py::ssize_t> new_strides(strides_.begin() + 1, strides_.end());
+
+            return py::cast(std::make_shared<ndarray>(
+                slice_view_tag{},
+                std::move(new_shape),
+                std::move(new_strides),
+                dtype_,
+                const_cast<char*>(elem_ptr),
+                shared_from_this()
+            ));
+        }
+    }
+
+    // Set element by integer index: arr[5] = value
+    void setitem_int(py::ssize_t index, py::object value) {
+        if (shape_.empty()) {
+            throw std::runtime_error("Cannot index a 0-dimensional array");
+        }
+
+        // Handle negative indices
+        if (index < 0) {
+            index += shape_[0];
+        }
+        if (index < 0 || index >= shape_[0]) {
+            throw std::out_of_range("Index out of bounds");
+        }
+
+        // Compute pointer to element
+        char* base_ptr = static_cast<char*>(data());
+        char* elem_ptr = base_ptr + index * strides_[0];
+
+        if (shape_.size() == 1) {
+            // 1D array: set scalar
+            char kind = dtype_.kind();
+            if (kind == 'f') {
+                if (dtype_.itemsize() == 8) {
+                    *reinterpret_cast<double*>(elem_ptr) = value.cast<double>();
+                } else if (dtype_.itemsize() == 4) {
+                    *reinterpret_cast<float*>(elem_ptr) = value.cast<float>();
+                }
+            } else if (kind == 'i') {
+                if (dtype_.itemsize() == 8) {
+                    *reinterpret_cast<int64_t*>(elem_ptr) = value.cast<int64_t>();
+                } else if (dtype_.itemsize() == 4) {
+                    *reinterpret_cast<int32_t*>(elem_ptr) = value.cast<int32_t>();
+                }
+            } else if (kind == 'u') {
+                if (dtype_.itemsize() == 8) {
+                    *reinterpret_cast<uint64_t*>(elem_ptr) = value.cast<uint64_t>();
+                } else if (dtype_.itemsize() == 4) {
+                    *reinterpret_cast<uint32_t*>(elem_ptr) = value.cast<uint32_t>();
+                }
+            } else if (kind == 'b') {
+                *reinterpret_cast<bool*>(elem_ptr) = value.cast<bool>();
+            } else {
+                throw std::runtime_error("Unsupported dtype for assignment");
+            }
+        } else {
+            // ND array: assign sub-array
+            // For now, require the value to be an ndarray or numpy array
+            throw std::runtime_error("Sub-array assignment not yet implemented");
+        }
+    }
+
+    // Set elements by slice: arr[1:4] = value (scalar or array)
+    void setitem_slice(py::slice slice, py::object value) {
+        if (shape_.empty()) {
+            throw std::runtime_error("Cannot slice a 0-dimensional array");
+        }
+
+        // Compute slice parameters
+        py::ssize_t start, stop, step, length;
+        if (!slice.compute(shape_[0], &start, &stop, &step, &length)) {
+            throw py::error_already_set();
+        }
+
+        if (length == 0) {
+            return;  // Nothing to assign
+        }
+
+        char* base_ptr = static_cast<char*>(data());
+        py::ssize_t itemsize = dtype_.itemsize();
+
+        // Check if value is a scalar or array
+        if (py::isinstance<py::int_>(value) || py::isinstance<py::float_>(value) ||
+            py::isinstance<py::bool_>(value)) {
+            // Scalar broadcast: assign same value to all elements in slice
+            char kind = dtype_.kind();
+
+            for (py::ssize_t i = 0; i < length; ++i) {
+                char* elem_ptr = base_ptr + (start + i * step) * strides_[0];
+
+                if (kind == 'f') {
+                    double v = value.cast<double>();
+                    if (itemsize == 8) {
+                        *reinterpret_cast<double*>(elem_ptr) = v;
+                    } else if (itemsize == 4) {
+                        *reinterpret_cast<float*>(elem_ptr) = static_cast<float>(v);
+                    }
+                } else if (kind == 'i') {
+                    int64_t v = value.cast<int64_t>();
+                    if (itemsize == 8) {
+                        *reinterpret_cast<int64_t*>(elem_ptr) = v;
+                    } else if (itemsize == 4) {
+                        *reinterpret_cast<int32_t*>(elem_ptr) = static_cast<int32_t>(v);
+                    }
+                } else if (kind == 'u') {
+                    uint64_t v = value.cast<uint64_t>();
+                    if (itemsize == 8) {
+                        *reinterpret_cast<uint64_t*>(elem_ptr) = v;
+                    } else if (itemsize == 4) {
+                        *reinterpret_cast<uint32_t*>(elem_ptr) = static_cast<uint32_t>(v);
+                    }
+                } else if (kind == 'b') {
+                    *reinterpret_cast<bool*>(elem_ptr) = value.cast<bool>();
+                }
+            }
+        } else if (py::isinstance<ndarray>(value)) {
+            // Array assignment
+            auto src = value.cast<std::shared_ptr<ndarray>>();
+
+            // For 1D slices, check that source size matches
+            if (shape_.size() == 1) {
+                if (src->size() != length) {
+                    throw std::runtime_error(
+                        "Cannot assign array of size " + std::to_string(src->size()) +
+                        " to slice of size " + std::to_string(length));
+                }
+
+                // Copy elements
+                char const* src_ptr = static_cast<char const*>(src->data());
+                py::ssize_t src_stride = src->strides()[0];
+
+                for (py::ssize_t i = 0; i < length; ++i) {
+                    char* dst_elem = base_ptr + (start + i * step) * strides_[0];
+                    char const* src_elem = src_ptr + i * src_stride;
+                    std::memcpy(dst_elem, src_elem, itemsize);
+                }
+            } else {
+                throw std::runtime_error("Multi-dimensional slice assignment not yet implemented");
+            }
+        } else if (py::isinstance<py::array>(value)) {
+            // NumPy array assignment
+            py::array np_arr = value.cast<py::array>();
+
+            if (shape_.size() == 1) {
+                if (np_arr.size() != static_cast<size_t>(length)) {
+                    throw std::runtime_error(
+                        "Cannot assign array of size " + std::to_string(np_arr.size()) +
+                        " to slice of size " + std::to_string(length));
+                }
+
+                // Ensure contiguous and correct dtype
+                py::array contiguous = py::array::ensure(np_arr,
+                    py::array::c_style | py::array::forcecast);
+
+                char const* src_ptr = static_cast<char const*>(contiguous.data());
+                py::ssize_t src_itemsize = contiguous.itemsize();
+
+                for (py::ssize_t i = 0; i < length; ++i) {
+                    char* dst_elem = base_ptr + (start + i * step) * strides_[0];
+                    char const* src_elem = src_ptr + i * src_itemsize;
+                    std::memcpy(dst_elem, src_elem, itemsize);
+                }
+            } else {
+                throw std::runtime_error("Multi-dimensional slice assignment not yet implemented");
+            }
+        } else {
+            throw std::runtime_error("Assignment value must be a scalar or array");
+        }
+    }
+
     // Slice a 1D array: arr[start:stop:step]
     std::shared_ptr<ndarray> getitem_slice(py::slice slice) const {
         if (shape_.empty()) {

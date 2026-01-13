@@ -411,3 +411,258 @@ class TestReshapeNumpyComparison:
 
         assert result.shape == expected.shape
         np.testing.assert_array_equal(result.to_numpy(), expected)
+
+
+# Phase 7: Integer Indexing and Assignment Tests
+
+class TestIntegerIndexing:
+    """Test integer indexing operations."""
+
+    def test_getitem_int_positive(self, hpx_runtime):
+        """Get element by positive index: arr[5]."""
+        arr = hpx_runtime.arange(10)
+        value = arr[5]
+
+        assert value == 5.0
+
+    def test_getitem_int_first(self, hpx_runtime):
+        """Get first element: arr[0]."""
+        arr = hpx_runtime.arange(10)
+        value = arr[0]
+
+        assert value == 0.0
+
+    def test_getitem_int_last(self, hpx_runtime):
+        """Get last element with positive index: arr[9]."""
+        arr = hpx_runtime.arange(10)
+        value = arr[9]
+
+        assert value == 9.0
+
+    def test_getitem_int_negative(self, hpx_runtime):
+        """Get element by negative index: arr[-1]."""
+        arr = hpx_runtime.arange(10)
+        value = arr[-1]
+
+        assert value == 9.0
+
+    def test_getitem_int_negative_middle(self, hpx_runtime):
+        """Get element by negative index: arr[-5]."""
+        arr = hpx_runtime.arange(10)
+        value = arr[-5]
+
+        assert value == 5.0
+
+    def test_getitem_int_out_of_bounds(self, hpx_runtime):
+        """Out of bounds index raises error."""
+        arr = hpx_runtime.arange(10)
+
+        with pytest.raises((IndexError, RuntimeError)):
+            _ = arr[10]
+
+    def test_getitem_int_negative_out_of_bounds(self, hpx_runtime):
+        """Negative out of bounds index raises error."""
+        arr = hpx_runtime.arange(10)
+
+        with pytest.raises((IndexError, RuntimeError)):
+            _ = arr[-11]
+
+    def test_getitem_int_float32(self, hpx_runtime):
+        """Get element from float32 array."""
+        np_arr = np.arange(10, dtype=np.float32)
+        arr = hpx_runtime.from_numpy(np_arr)
+        value = arr[5]
+
+        assert isinstance(value, float)
+        assert value == 5.0
+
+    def test_getitem_int_int64(self, hpx_runtime):
+        """Get element from int64 array."""
+        np_arr = np.arange(10, dtype=np.int64)
+        arr = hpx_runtime.from_numpy(np_arr)
+        value = arr[5]
+
+        assert value == 5
+
+    def test_getitem_int_int32(self, hpx_runtime):
+        """Get element from int32 array."""
+        np_arr = np.arange(10, dtype=np.int32)
+        arr = hpx_runtime.from_numpy(np_arr)
+        value = arr[5]
+
+        assert value == 5
+
+
+class TestIntegerSetitem:
+    """Test integer setitem operations."""
+
+    def test_setitem_int_basic(self, hpx_runtime):
+        """Set element by index: arr[5] = 42."""
+        arr = hpx_runtime.arange(10)
+        arr[5] = 42.0
+
+        np.testing.assert_array_equal(
+            arr.to_numpy(),
+            [0, 1, 2, 3, 4, 42, 6, 7, 8, 9]
+        )
+
+    def test_setitem_int_first(self, hpx_runtime):
+        """Set first element: arr[0] = 99."""
+        arr = hpx_runtime.arange(10)
+        arr[0] = 99.0
+
+        assert arr[0] == 99.0
+
+    def test_setitem_int_last(self, hpx_runtime):
+        """Set last element: arr[9] = 99."""
+        arr = hpx_runtime.arange(10)
+        arr[9] = 99.0
+
+        assert arr[9] == 99.0
+
+    def test_setitem_int_negative(self, hpx_runtime):
+        """Set element by negative index: arr[-1] = 42."""
+        arr = hpx_runtime.arange(10)
+        arr[-1] = 42.0
+
+        assert arr[-1] == 42.0
+        assert arr[9] == 42.0
+
+    def test_setitem_int_negative_middle(self, hpx_runtime):
+        """Set element by negative index: arr[-5] = 42."""
+        arr = hpx_runtime.arange(10)
+        arr[-5] = 42.0
+
+        assert arr[5] == 42.0
+
+    def test_setitem_int_out_of_bounds(self, hpx_runtime):
+        """Out of bounds setitem raises error."""
+        arr = hpx_runtime.arange(10)
+
+        with pytest.raises((IndexError, RuntimeError)):
+            arr[10] = 42.0
+
+    def test_setitem_int_type_coercion(self, hpx_runtime):
+        """Set with different type (int to float array)."""
+        arr = hpx_runtime.arange(10)  # float64 by default
+        arr[5] = 42  # Set int value
+
+        assert arr[5] == 42.0
+
+
+class TestSliceSetitem:
+    """Test slice setitem operations."""
+
+    def test_setitem_slice_scalar(self, hpx_runtime):
+        """Set slice with scalar: arr[2:5] = 42."""
+        arr = hpx_runtime.arange(10)
+        arr[2:5] = 42.0
+
+        np.testing.assert_array_equal(
+            arr.to_numpy(),
+            [0, 1, 42, 42, 42, 5, 6, 7, 8, 9]
+        )
+
+    def test_setitem_slice_from_start(self, hpx_runtime):
+        """Set slice from start: arr[:3] = 0."""
+        arr = hpx_runtime.arange(10)
+        arr[:3] = 0.0
+
+        np.testing.assert_array_equal(
+            arr.to_numpy(),
+            [0, 0, 0, 3, 4, 5, 6, 7, 8, 9]
+        )
+
+    def test_setitem_slice_to_end(self, hpx_runtime):
+        """Set slice to end: arr[7:] = 99."""
+        arr = hpx_runtime.arange(10)
+        arr[7:] = 99.0
+
+        np.testing.assert_array_equal(
+            arr.to_numpy(),
+            [0, 1, 2, 3, 4, 5, 6, 99, 99, 99]
+        )
+
+    def test_setitem_slice_full(self, hpx_runtime):
+        """Set full slice: arr[:] = 5."""
+        arr = hpx_runtime.arange(10)
+        arr[:] = 5.0
+
+        np.testing.assert_array_equal(
+            arr.to_numpy(),
+            [5, 5, 5, 5, 5, 5, 5, 5, 5, 5]
+        )
+
+    def test_setitem_slice_step(self, hpx_runtime):
+        """Set slice with step: arr[::2] = 0."""
+        arr = hpx_runtime.arange(10)
+        arr[::2] = 0.0
+
+        np.testing.assert_array_equal(
+            arr.to_numpy(),
+            [0, 1, 0, 3, 0, 5, 0, 7, 0, 9]
+        )
+
+    def test_setitem_slice_negative(self, hpx_runtime):
+        """Set slice with negative indices: arr[-3:] = 42."""
+        arr = hpx_runtime.arange(10)
+        arr[-3:] = 42.0
+
+        np.testing.assert_array_equal(
+            arr.to_numpy(),
+            [0, 1, 2, 3, 4, 5, 6, 42, 42, 42]
+        )
+
+    def test_setitem_slice_array(self, hpx_runtime):
+        """Set slice with array: arr[2:5] = [10, 20, 30]."""
+        arr = hpx_runtime.arange(10)
+        arr[2:5] = np.array([10, 20, 30], dtype=np.float64)
+
+        np.testing.assert_array_equal(
+            arr.to_numpy(),
+            [0, 1, 10, 20, 30, 5, 6, 7, 8, 9]
+        )
+
+    def test_setitem_slice_hpxpy_array(self, hpx_runtime):
+        """Set slice with HPXPy array."""
+        arr = hpx_runtime.arange(10)
+        values = hpx_runtime.ones(3) * 99.0
+        arr[2:5] = values
+
+        np.testing.assert_array_equal(
+            arr.to_numpy(),
+            [0, 1, 99, 99, 99, 5, 6, 7, 8, 9]
+        )
+
+
+class TestIndexingNumpyComparison:
+    """Compare HPXPy indexing with NumPy behavior."""
+
+    @pytest.mark.parametrize("index", [0, 1, 5, 9, -1, -5, -10])
+    def test_getitem_matches_numpy(self, hpx_runtime, index):
+        """Verify HPXPy integer indexing matches NumPy."""
+        np_arr = np.arange(10, dtype=np.float64)
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        expected = np_arr[index]
+        result = arr[index]
+
+        assert result == expected
+
+    @pytest.mark.parametrize("slice_spec,value", [
+        (slice(2, 5), 42.0),
+        (slice(None, 3), 0.0),
+        (slice(7, None), 99.0),
+        (slice(None, None), 5.0),
+        (slice(None, None, 2), 0.0),
+        (slice(-3, None), 42.0),
+    ])
+    def test_setitem_slice_matches_numpy(self, hpx_runtime, slice_spec, value):
+        """Verify HPXPy slice setitem matches NumPy."""
+        np_arr = np.arange(10, dtype=np.float64)
+        arr = hpx_runtime.from_numpy(np_arr.copy())
+
+        np_arr[slice_spec] = value
+        arr[slice_spec] = value
+
+        np.testing.assert_array_equal(arr.to_numpy(), np_arr)

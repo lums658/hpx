@@ -221,11 +221,23 @@ void bind_array(py::module_& m) {
         .def("__ge__", [](hpxpy::ndarray const& a, py::object const& b) {
             return hpxpy::ops::dispatch_compare(a, b, hpxpy::ops::Ge{});
         })
-        // Slicing support (Phase 6)
+        // Indexing and slicing (Phase 6 & 7)
+        .def("__getitem__", [](hpxpy::ndarray const& self, py::ssize_t index) {
+            return self.getitem_int(index);
+        }, py::arg("index"),
+            "Get element by integer index.")
         .def("__getitem__", [](hpxpy::ndarray const& self, py::slice slice) {
             return self.getitem_slice(slice);
         }, py::arg("slice"),
             "Get a slice view of the array.")
+        .def("__setitem__", [](hpxpy::ndarray& self, py::ssize_t index, py::object value) {
+            self.setitem_int(index, value);
+        }, py::arg("index"), py::arg("value"),
+            "Set element by integer index.")
+        .def("__setitem__", [](hpxpy::ndarray& self, py::slice slice, py::object value) {
+            self.setitem_slice(slice, value);
+        }, py::arg("slice"), py::arg("value"),
+            "Set elements by slice.")
         // Reshape operations (Phase 8)
         .def("reshape", &hpxpy::ndarray::reshape,
             py::arg("shape"),
