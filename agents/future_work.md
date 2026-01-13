@@ -14,14 +14,16 @@ Deferred features and enhancements for future phases.
 - [x] `arr[1:4] = 7` - Slice assignment with scalar broadcast
 - [x] `arr[1:4] = other_arr` - Slice assignment with array
 
-## Phase 8: Multi-dimensional Slicing
+## Phase 8: Multi-dimensional Slicing (COMPLETED)
 
 ### Multi-dimensional Slicing
-- `arr[1:3, 2:5]` - Multi-axis slicing
-- Requires tuple handling in __getitem__
-- Multi-axis __setitem__ support
+- [x] `arr[1:3, 2:5]` - Multi-axis slicing
+- [x] Tuple handling in __getitem__
+- [x] Multi-axis __setitem__ support
+- [x] Mixed integer/slice indices (e.g., `arr[1, 2:5]`)
+- [x] Negative indices in multi-dim
 
-### Advanced Shape Operations
+### Advanced Shape Operations (Deferred)
 - Transpose support
 - Squeeze/expand_dims
 

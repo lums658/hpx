@@ -238,6 +238,39 @@ void bind_array(py::module_& m) {
             self.setitem_slice(slice, value);
         }, py::arg("slice"), py::arg("value"),
             "Set elements by slice.")
+        // Multi-dimensional indexing (Phase 8)
+        .def("__getitem__", [](hpxpy::ndarray const& self, py::tuple indices) {
+            return self.getitem_tuple(indices);
+        }, py::arg("indices"),
+            R"pbdoc(
+                Multi-dimensional indexing.
+
+                Supports mixed integer and slice indices:
+                - arr[1, 2] - select single element (returns scalar if all dims selected)
+                - arr[1:3, 2:5] - select sub-array with slices
+                - arr[1, 2:5] - mix of integer and slice
+
+                Args:
+                    indices: Tuple of integers and/or slices.
+
+                Returns:
+                    Scalar (if all indices are integers) or array view.
+            )pbdoc")
+        .def("__setitem__", [](hpxpy::ndarray& self, py::tuple indices, py::object value) {
+            self.setitem_tuple(indices, value);
+        }, py::arg("indices"), py::arg("value"),
+            R"pbdoc(
+                Multi-dimensional assignment.
+
+                Supports mixed integer and slice indices:
+                - arr[1, 2] = 42 - set single element
+                - arr[1:3, 2:5] = 0 - broadcast scalar to sub-array
+                - arr[1:3, 2:5] = other_arr - copy array to sub-array
+
+                Args:
+                    indices: Tuple of integers and/or slices.
+                    value: Scalar or array to assign.
+            )pbdoc")
         // Reshape operations (Phase 8)
         .def("reshape", &hpxpy::ndarray::reshape,
             py::arg("shape"),

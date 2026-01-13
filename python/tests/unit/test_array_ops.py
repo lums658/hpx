@@ -666,3 +666,253 @@ class TestIndexingNumpyComparison:
         arr[slice_spec] = value
 
         np.testing.assert_array_equal(arr.to_numpy(), np_arr)
+
+
+# Phase 8: Multi-dimensional Slicing Tests
+
+class TestMultiDimGetitem:
+    """Test multi-dimensional __getitem__ with tuple indices."""
+
+    def test_2d_integer_indices(self, hpx_runtime):
+        """2D array with two integer indices: arr[1, 2]."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        # Single element access
+        result = arr[1, 2]
+        expected = np_arr[1, 2]
+        assert result == expected
+
+    def test_2d_slice_indices(self, hpx_runtime):
+        """2D array with two slice indices: arr[1:3, 0:2]."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        result = arr[1:3, 0:2]
+        expected = np_arr[1:3, 0:2]
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_equal(result.to_numpy(), expected)
+
+    def test_2d_mixed_int_slice(self, hpx_runtime):
+        """2D array with int and slice: arr[1, 0:3]."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        result = arr[1, 0:3]
+        expected = np_arr[1, 0:3]
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_equal(result.to_numpy(), expected)
+
+    def test_2d_mixed_slice_int(self, hpx_runtime):
+        """2D array with slice and int: arr[0:2, 3]."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        result = arr[0:2, 3]
+        expected = np_arr[0:2, 3]
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_equal(result.to_numpy(), expected)
+
+    def test_2d_negative_indices(self, hpx_runtime):
+        """2D array with negative indices: arr[-1, -2]."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        result = arr[-1, -2]
+        expected = np_arr[-1, -2]
+        assert result == expected
+
+    def test_2d_negative_slices(self, hpx_runtime):
+        """2D array with negative slices: arr[-2:, -3:]."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        result = arr[-2:, -3:]
+        expected = np_arr[-2:, -3:]
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_equal(result.to_numpy(), expected)
+
+    def test_2d_step_slices(self, hpx_runtime):
+        """2D array with step slices: arr[::2, ::2]."""
+        np_arr = np.arange(16, dtype=np.float64).reshape((4, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        result = arr[::2, ::2]
+        expected = np_arr[::2, ::2]
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_equal(result.to_numpy(), expected)
+
+    def test_3d_integer_indices(self, hpx_runtime):
+        """3D array with three integer indices: arr[1, 2, 3]."""
+        np_arr = np.arange(24, dtype=np.float64).reshape((2, 3, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        result = arr[1, 2, 3]
+        expected = np_arr[1, 2, 3]
+        assert result == expected
+
+    def test_3d_slice_indices(self, hpx_runtime):
+        """3D array with slice indices: arr[0:2, 1:3, 2:4]."""
+        np_arr = np.arange(24, dtype=np.float64).reshape((2, 3, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        result = arr[0:2, 1:3, 2:4]
+        expected = np_arr[0:2, 1:3, 2:4]
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_equal(result.to_numpy(), expected)
+
+    def test_3d_mixed_indices(self, hpx_runtime):
+        """3D array with mixed indices: arr[1, 0:2, 1:4]."""
+        np_arr = np.arange(24, dtype=np.float64).reshape((2, 3, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        result = arr[1, 0:2, 1:4]
+        expected = np_arr[1, 0:2, 1:4]
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_equal(result.to_numpy(), expected)
+
+    def test_partial_index(self, hpx_runtime):
+        """Partial indexing: arr[1] on 2D array."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        # Single index on 2D returns 1D
+        result = arr[1,]  # Same as arr[1] but as tuple
+        expected = np_arr[1,]
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_equal(result.to_numpy(), expected)
+
+    def test_out_of_bounds(self, hpx_runtime):
+        """Out of bounds access raises error."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        with pytest.raises((IndexError, RuntimeError)):
+            _ = arr[5, 0]
+
+    def test_too_many_indices(self, hpx_runtime):
+        """Too many indices raises error."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        with pytest.raises(RuntimeError):
+            _ = arr[1, 2, 3]  # 3 indices for 2D array
+
+
+class TestMultiDimSetitem:
+    """Test multi-dimensional __setitem__ with tuple indices."""
+
+    def test_2d_setitem_scalar_int_indices(self, hpx_runtime):
+        """Set single element: arr[1, 2] = 99."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr.copy())
+
+        arr[1, 2] = 99.0
+        np_arr[1, 2] = 99.0
+
+        np.testing.assert_array_equal(arr.to_numpy(), np_arr)
+
+    def test_2d_setitem_scalar_to_slice(self, hpx_runtime):
+        """Broadcast scalar to slice: arr[1:3, 0:2] = 0."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr.copy())
+
+        arr[1:3, 0:2] = 0.0
+        np_arr[1:3, 0:2] = 0.0
+
+        np.testing.assert_array_equal(arr.to_numpy(), np_arr)
+
+    def test_2d_setitem_array_to_slice(self, hpx_runtime):
+        """Assign array to slice: arr[1:3, 0:2] = values."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        values = np.array([[10, 20], [30, 40]], dtype=np.float64)
+
+        arr = hpx_runtime.from_numpy(np_arr.copy())
+        arr[1:3, 0:2] = values
+        np_arr[1:3, 0:2] = values
+
+        np.testing.assert_array_equal(arr.to_numpy(), np_arr)
+
+    def test_2d_setitem_mixed_indices(self, hpx_runtime):
+        """Set with mixed indices: arr[1, 0:3] = values."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        values = np.array([10, 20, 30], dtype=np.float64)
+
+        arr = hpx_runtime.from_numpy(np_arr.copy())
+        arr[1, 0:3] = values
+        np_arr[1, 0:3] = values
+
+        np.testing.assert_array_equal(arr.to_numpy(), np_arr)
+
+    def test_2d_setitem_negative_indices(self, hpx_runtime):
+        """Set with negative indices: arr[-1, -1] = 99."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr.copy())
+
+        arr[-1, -1] = 99.0
+        np_arr[-1, -1] = 99.0
+
+        np.testing.assert_array_equal(arr.to_numpy(), np_arr)
+
+    def test_3d_setitem_scalar(self, hpx_runtime):
+        """Set 3D slice with scalar: arr[0:2, 1:3, 2:4] = 5."""
+        np_arr = np.arange(24, dtype=np.float64).reshape((2, 3, 4))
+        arr = hpx_runtime.from_numpy(np_arr.copy())
+
+        arr[0:2, 1:3, 2:4] = 5.0
+        np_arr[0:2, 1:3, 2:4] = 5.0
+
+        np.testing.assert_array_equal(arr.to_numpy(), np_arr)
+
+
+class TestMultiDimNumpyComparison:
+    """Compare multi-dim slicing with NumPy behavior."""
+
+    @pytest.mark.parametrize("idx", [
+        (1, 2),
+        (0, 0),
+        (-1, -1),
+        (slice(1, 3), slice(0, 2)),
+        (slice(None), slice(1, 3)),
+        (1, slice(0, 3)),
+        (slice(0, 2), 2),
+        (slice(None, None, 2), slice(None, None, 2)),
+    ])
+    def test_getitem_matches_numpy(self, hpx_runtime, idx):
+        """Verify HPXPy multi-dim getitem matches NumPy."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr)
+
+        expected = np_arr[idx]
+        result = arr[idx]
+
+        if isinstance(expected, np.ndarray):
+            assert result.shape == expected.shape
+            np.testing.assert_array_equal(result.to_numpy(), expected)
+        else:
+            assert result == expected
+
+    @pytest.mark.parametrize("idx,value", [
+        ((1, 2), 99.0),
+        ((0, 0), 42.0),
+        ((-1, -1), 0.0),
+        ((slice(1, 3), slice(0, 2)), 5.0),
+        ((1, slice(0, 3)), 7.0),
+    ])
+    def test_setitem_matches_numpy(self, hpx_runtime, idx, value):
+        """Verify HPXPy multi-dim setitem matches NumPy."""
+        np_arr = np.arange(12, dtype=np.float64).reshape((3, 4))
+        arr = hpx_runtime.from_numpy(np_arr.copy())
+
+        np_arr[idx] = value
+        arr[idx] = value
+
+        np.testing.assert_array_equal(arr.to_numpy(), np_arr)
