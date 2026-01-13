@@ -158,3 +158,195 @@ class TestOperatorChaining:
         result = x ** 2 + 2 * x + 1  # (x+1)^2
         expected = np.arange(1, 6) ** 2 + 2 * np.arange(1, 6) + 1
         np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+
+# Phase 9: Broadcasting Tests
+
+class TestBroadcastingBasic:
+    """Test NumPy-style broadcasting for binary operations."""
+
+    def test_broadcast_1d_to_2d(self, hpx_runtime):
+        """Broadcast (4,) to (3, 4)."""
+        a_np = np.arange(12, dtype=np.float64).reshape((3, 4))
+        b_np = np.array([1, 2, 3, 4], dtype=np.float64)
+
+        a = hpx.from_numpy(a_np)
+        b = hpx.from_numpy(b_np)
+
+        result = a + b
+        expected = a_np + b_np
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+    def test_broadcast_column_to_2d(self, hpx_runtime):
+        """Broadcast (3, 1) to (3, 4)."""
+        a_np = np.arange(12, dtype=np.float64).reshape((3, 4))
+        b_np = np.array([[10], [20], [30]], dtype=np.float64)
+
+        a = hpx.from_numpy(a_np)
+        b = hpx.from_numpy(b_np)
+
+        result = a + b
+        expected = a_np + b_np
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+    def test_broadcast_row_col(self, hpx_runtime):
+        """Broadcast (1, 4) and (3, 1) to (3, 4)."""
+        a_np = np.array([[1, 2, 3, 4]], dtype=np.float64)
+        b_np = np.array([[10], [20], [30]], dtype=np.float64)
+
+        a = hpx.from_numpy(a_np)
+        b = hpx.from_numpy(b_np)
+
+        result = a + b
+        expected = a_np + b_np
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+    def test_broadcast_3d_1d(self, hpx_runtime):
+        """Broadcast (4,) to (2, 3, 4)."""
+        a_np = np.arange(24, dtype=np.float64).reshape((2, 3, 4))
+        b_np = np.array([1, 2, 3, 4], dtype=np.float64)
+
+        a = hpx.from_numpy(a_np)
+        b = hpx.from_numpy(b_np)
+
+        result = a * b
+        expected = a_np * b_np
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+    def test_broadcast_same_shape_fast_path(self, hpx_runtime):
+        """Same shape arrays use fast path (no broadcasting needed)."""
+        a_np = np.arange(12, dtype=np.float64).reshape((3, 4))
+        b_np = np.ones((3, 4), dtype=np.float64) * 2
+
+        a = hpx.from_numpy(a_np)
+        b = hpx.from_numpy(b_np)
+
+        result = a + b
+        expected = a_np + b_np
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+
+class TestBroadcastingAllOperators:
+    """Test broadcasting works for all arithmetic operators."""
+
+    def test_broadcast_add(self, hpx_runtime):
+        a = hpx.from_numpy(np.arange(12, dtype=np.float64).reshape((3, 4)))
+        b = hpx.from_numpy(np.array([1, 2, 3, 4], dtype=np.float64))
+        result = a + b
+        expected = np.arange(12).reshape((3, 4)) + np.array([1, 2, 3, 4])
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+    def test_broadcast_sub(self, hpx_runtime):
+        a = hpx.from_numpy(np.arange(12, dtype=np.float64).reshape((3, 4)))
+        b = hpx.from_numpy(np.array([1, 2, 3, 4], dtype=np.float64))
+        result = a - b
+        expected = np.arange(12).reshape((3, 4)) - np.array([1, 2, 3, 4])
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+    def test_broadcast_mul(self, hpx_runtime):
+        a = hpx.from_numpy(np.arange(12, dtype=np.float64).reshape((3, 4)))
+        b = hpx.from_numpy(np.array([1, 2, 3, 4], dtype=np.float64))
+        result = a * b
+        expected = np.arange(12).reshape((3, 4)) * np.array([1, 2, 3, 4])
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+    def test_broadcast_div(self, hpx_runtime):
+        a = hpx.from_numpy(np.arange(1, 13, dtype=np.float64).reshape((3, 4)))
+        b = hpx.from_numpy(np.array([1, 2, 3, 4], dtype=np.float64))
+        result = a / b
+        expected = np.arange(1, 13).reshape((3, 4)) / np.array([1, 2, 3, 4])
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+
+class TestBroadcastingComparison:
+    """Test broadcasting for comparison operators."""
+
+    def test_broadcast_eq(self, hpx_runtime):
+        a_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.float64)
+        b_np = np.array([1, 2, 3], dtype=np.float64)
+
+        a = hpx.from_numpy(a_np)
+        b = hpx.from_numpy(b_np)
+
+        result = a == b
+        expected = a_np == b_np
+
+        np.testing.assert_array_equal(result.to_numpy(), expected)
+
+    def test_broadcast_lt(self, hpx_runtime):
+        a_np = np.arange(12, dtype=np.float64).reshape((3, 4))
+        b_np = np.array([5, 5, 5, 5], dtype=np.float64)
+
+        a = hpx.from_numpy(a_np)
+        b = hpx.from_numpy(b_np)
+
+        result = a < b
+        expected = a_np < b_np
+
+        np.testing.assert_array_equal(result.to_numpy(), expected)
+
+
+class TestBroadcastingErrors:
+    """Test broadcasting error cases."""
+
+    def test_incompatible_shapes_raises(self, hpx_runtime):
+        """Incompatible shapes should raise an error."""
+        a = hpx.from_numpy(np.arange(12, dtype=np.float64).reshape((3, 4)))
+        b = hpx.from_numpy(np.arange(5, dtype=np.float64))  # (5,) not compatible with (3, 4)
+
+        with pytest.raises(RuntimeError, match="Cannot broadcast"):
+            _ = a + b
+
+    def test_incompatible_inner_dims(self, hpx_runtime):
+        """Inner dimensions must match."""
+        a = hpx.from_numpy(np.arange(12, dtype=np.float64).reshape((3, 4)))
+        b = hpx.from_numpy(np.arange(3, dtype=np.float64).reshape((3, 1)))
+
+        # This should work (3,4) + (3,1) -> (3,4)
+        result = a + b
+        expected = np.arange(12).reshape((3, 4)) + np.arange(3).reshape((3, 1))
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+
+class TestBroadcastingNumpyComparison:
+    """Verify broadcasting matches NumPy exactly."""
+
+    @pytest.mark.parametrize("a_shape,b_shape", [
+        ((3, 4), (4,)),
+        ((3, 4), (1, 4)),
+        ((3, 4), (3, 1)),
+        ((3, 1), (1, 4)),
+        ((2, 3, 4), (4,)),
+        ((2, 3, 4), (3, 4)),
+        ((2, 3, 4), (1, 3, 4)),
+        ((5,), (5,)),
+        ((1, 5), (5, 1)),
+    ])
+    def test_broadcast_shapes_match_numpy(self, hpx_runtime, a_shape, b_shape):
+        """Verify HPXPy broadcasting produces same result as NumPy."""
+        a_np = np.arange(np.prod(a_shape), dtype=np.float64).reshape(a_shape)
+        b_np = np.arange(np.prod(b_shape), dtype=np.float64).reshape(b_shape) + 1
+
+        a = hpx.from_numpy(a_np)
+        b = hpx.from_numpy(b_np)
+
+        # Test add
+        result = a + b
+        expected = a_np + b_np
+        assert result.shape == expected.shape, f"Shape mismatch: {result.shape} vs {expected.shape}"
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+        # Test multiply
+        result = a * b
+        expected = a_np * b_np
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)

@@ -27,14 +27,21 @@ Deferred features and enhancements for future phases.
 - Transpose support
 - Squeeze/expand_dims
 
-## Phase 9: Broadcasting
+## Phase 9: Broadcasting (COMPLETED)
 
 ### Binary Operation Broadcasting
-- NumPy-compatible broadcasting for binary operations
-- Shape compatibility checking
-- Requires significant operator refactoring
+- [x] NumPy-compatible broadcasting for binary operations
+- [x] Shape compatibility checking (`broadcast_shapes()`, `can_broadcast()`)
+- [x] Broadcasting for all arithmetic operators (+, -, *, /, **)
+- [x] Broadcasting for comparison operators (==, !=, <, <=, >, >=)
+- [x] Fast path for same-shape arrays (no broadcasting overhead)
 
-### Advanced Indexing
+### Tutorials Added
+- [x] Monte Carlo simulations (08_monte_carlo.ipynb)
+- [x] Black-Scholes option pricing (09_black_scholes.ipynb)
+- [x] Image processing (10_image_processing.ipynb)
+
+### Advanced Indexing (Deferred)
 - Boolean mask indexing: `arr[arr > 5]`
 - Fancy indexing: `arr[[1, 3, 5]]`
 - Integer array indexing

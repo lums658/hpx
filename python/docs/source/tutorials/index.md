@@ -96,6 +96,51 @@ Topics covered:
 - Performance analysis
 :::
 
+:::{grid-item-card} 7. Monte Carlo Simulations
+:link: 08_monte_carlo
+:link-type: doc
+
+**Level:** Intermediate | **Time:** 25 min
+
+Learn Monte Carlo methods with parallel random sampling.
+
+Topics covered:
+- Pi estimation
+- Monte Carlo integration
+- Multi-dimensional integration
+- Convergence analysis
+:::
+
+:::{grid-item-card} 8. Black-Scholes Option Pricing
+:link: 09_black_scholes
+:link-type: doc
+
+**Level:** Intermediate | **Time:** 25 min
+
+Financial computing with the Black-Scholes model.
+
+Topics covered:
+- Option pricing formula
+- Greeks computation
+- Volatility surfaces
+- Batch pricing with broadcasting
+:::
+
+:::{grid-item-card} 9. Image Processing
+:link: 10_image_processing
+:link-type: doc
+
+**Level:** Intermediate | **Time:** 20 min
+
+Parallel image processing operations.
+
+Topics covered:
+- Image normalization
+- RGB channel operations
+- Batch image statistics
+- Performance comparison
+:::
+
 ::::
 
 ## Running the Tutorials
@@ -143,4 +188,7 @@ pip install jupyterlab numpy matplotlib
 05_gpu_acceleration
 06_array_operations
 07_benchmarks
+08_monte_carlo
+09_black_scholes
+10_image_processing
 ```

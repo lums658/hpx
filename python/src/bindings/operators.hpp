@@ -22,18 +22,94 @@ namespace py = pybind11;
 namespace hpxpy {
 namespace ops {
 
-// Helper to check if shapes are compatible for broadcasting
+// Helper to check if shapes are equal
 inline bool shapes_equal(std::vector<py::ssize_t> const& a, std::vector<py::ssize_t> const& b) {
     return a == b;
 }
 
-// Apply binary operation element-wise (same shape arrays)
-template<typename T, typename Op>
-std::shared_ptr<ndarray> binary_op(ndarray const& a, ndarray const& b, Op op) {
-    if (!shapes_equal(a.shape(), b.shape())) {
-        throw std::runtime_error("Shapes must match for element-wise operation");
-    }
+// Compute broadcast result shape (NumPy-style broadcasting)
+// Returns empty vector if shapes are incompatible
+inline std::vector<py::ssize_t> broadcast_shapes(
+    std::vector<py::ssize_t> const& a,
+    std::vector<py::ssize_t> const& b)
+{
+    size_t ndim_a = a.size();
+    size_t ndim_b = b.size();
+    size_t ndim_result = std::max(ndim_a, ndim_b);
 
+    std::vector<py::ssize_t> result(ndim_result);
+
+    // Work backwards from the last dimension
+    for (size_t i = 0; i < ndim_result; ++i) {
+        py::ssize_t dim_a = (i < ndim_a) ? a[ndim_a - 1 - i] : 1;
+        py::ssize_t dim_b = (i < ndim_b) ? b[ndim_b - 1 - i] : 1;
+
+        if (dim_a == dim_b) {
+            result[ndim_result - 1 - i] = dim_a;
+        } else if (dim_a == 1) {
+            result[ndim_result - 1 - i] = dim_b;
+        } else if (dim_b == 1) {
+            result[ndim_result - 1 - i] = dim_a;
+        } else {
+            // Incompatible shapes
+            return {};
+        }
+    }
+    return result;
+}
+
+// Check if shapes can be broadcast together
+inline bool can_broadcast(std::vector<py::ssize_t> const& a, std::vector<py::ssize_t> const& b) {
+    return !broadcast_shapes(a, b).empty();
+}
+
+// Compute linear index with broadcasting
+// For a shape that was broadcast from original_shape to result_shape
+inline py::ssize_t broadcast_index(
+    py::ssize_t flat_idx,
+    std::vector<py::ssize_t> const& result_shape,
+    std::vector<py::ssize_t> const& result_strides,
+    std::vector<py::ssize_t> const& original_shape,
+    std::vector<py::ssize_t> const& original_strides)
+{
+    // Convert flat index to multi-index in result shape
+    py::ssize_t idx = 0;
+    size_t ndim_result = result_shape.size();
+    size_t ndim_orig = original_shape.size();
+
+    py::ssize_t remaining = flat_idx;
+    for (size_t i = 0; i < ndim_result; ++i) {
+        py::ssize_t coord = remaining / result_strides[i];
+        remaining = remaining % result_strides[i];
+
+        // Map to original array's coordinate (handle broadcast dimensions)
+        size_t orig_dim_idx = i + ndim_orig - ndim_result;
+        if (i >= ndim_result - ndim_orig) {
+            py::ssize_t orig_dim = original_shape[orig_dim_idx];
+            if (orig_dim > 1) {
+                idx += coord * original_strides[orig_dim_idx];
+            }
+            // If orig_dim == 1, this dimension is broadcast, don't add to idx
+        }
+        // If i < ndim_result - ndim_orig, dimension doesn't exist in original
+    }
+    return idx;
+}
+
+// Compute strides for a shape (C-order, element-based not byte-based)
+inline std::vector<py::ssize_t> compute_element_strides(std::vector<py::ssize_t> const& shape) {
+    if (shape.empty()) return {};
+    std::vector<py::ssize_t> strides(shape.size());
+    strides.back() = 1;
+    for (int i = static_cast<int>(shape.size()) - 2; i >= 0; --i) {
+        strides[i] = strides[i + 1] * shape[i + 1];
+    }
+    return strides;
+}
+
+// Apply binary operation element-wise (same shape arrays - fast path)
+template<typename T, typename Op>
+std::shared_ptr<ndarray> binary_op_same_shape(ndarray const& a, ndarray const& b, Op op) {
     auto result = std::make_shared<ndarray>(a.shape(), a.dtype());
 
     T const* a_ptr = a.typed_data<T>();
@@ -50,6 +126,67 @@ std::shared_ptr<ndarray> binary_op(ndarray const& a, ndarray const& b, Op op) {
         });
 
     return result;
+}
+
+// Apply binary operation with broadcasting
+template<typename T, typename Op>
+std::shared_ptr<ndarray> binary_op_broadcast(ndarray const& a, ndarray const& b, Op op) {
+    auto result_shape = broadcast_shapes(a.shape(), b.shape());
+    if (result_shape.empty()) {
+        std::ostringstream ss;
+        ss << "Cannot broadcast shapes (";
+        for (size_t i = 0; i < a.shape().size(); ++i) {
+            if (i > 0) ss << ", ";
+            ss << a.shape()[i];
+        }
+        ss << ") and (";
+        for (size_t i = 0; i < b.shape().size(); ++i) {
+            if (i > 0) ss << ", ";
+            ss << b.shape()[i];
+        }
+        ss << ")";
+        throw std::runtime_error(ss.str());
+    }
+
+    auto result = std::make_shared<ndarray>(result_shape, a.dtype());
+
+    T const* a_ptr = a.typed_data<T>();
+    T const* b_ptr = b.typed_data<T>();
+    T* r_ptr = result->typed_data<T>();
+
+    // Compute result size and strides
+    py::ssize_t n = 1;
+    for (auto dim : result_shape) n *= dim;
+
+    auto result_strides = compute_element_strides(result_shape);
+    auto a_strides = compute_element_strides(a.shape());
+    auto b_strides = compute_element_strides(b.shape());
+
+    auto const& a_shape = a.shape();
+    auto const& b_shape = b.shape();
+
+    py::gil_scoped_release release;
+    hpx::for_each(hpx::execution::par, r_ptr, r_ptr + n,
+        [=](T& r) {
+            py::ssize_t flat_idx = &r - r_ptr;
+            py::ssize_t a_idx = broadcast_index(flat_idx, result_shape, result_strides, a_shape, a_strides);
+            py::ssize_t b_idx = broadcast_index(flat_idx, result_shape, result_strides, b_shape, b_strides);
+            r = op(a_ptr[a_idx], b_ptr[b_idx]);
+        });
+
+    return result;
+}
+
+// Apply binary operation element-wise with automatic broadcasting
+template<typename T, typename Op>
+std::shared_ptr<ndarray> binary_op(ndarray const& a, ndarray const& b, Op op) {
+    // Fast path for same shapes
+    if (shapes_equal(a.shape(), b.shape())) {
+        return binary_op_same_shape<T>(a, b, op);
+    }
+
+    // Use broadcasting
+    return binary_op_broadcast<T>(a, b, op);
 }
 
 // Apply binary operation with scalar (array op scalar)
@@ -209,13 +346,9 @@ std::shared_ptr<ndarray> dispatch_unary(ndarray const& a, Op op) {
     throw std::runtime_error("Unsupported dtype for operation");
 }
 
-// Comparison operations return bool array
+// Comparison operations return bool array (same shape - fast path)
 template<typename T, typename Op>
-std::shared_ptr<ndarray> compare_op(ndarray const& a, ndarray const& b, Op op) {
-    if (!shapes_equal(a.shape(), b.shape())) {
-        throw std::runtime_error("Shapes must match for comparison");
-    }
-
+std::shared_ptr<ndarray> compare_op_same_shape(ndarray const& a, ndarray const& b, Op op) {
     auto result = std::make_shared<ndarray>(a.shape(), py::dtype::of<bool>());
 
     T const* a_ptr = a.typed_data<T>();
@@ -231,6 +364,53 @@ std::shared_ptr<ndarray> compare_op(ndarray const& a, ndarray const& b, Op op) {
         });
 
     return result;
+}
+
+// Comparison with broadcasting
+template<typename T, typename Op>
+std::shared_ptr<ndarray> compare_op_broadcast(ndarray const& a, ndarray const& b, Op op) {
+    auto result_shape = broadcast_shapes(a.shape(), b.shape());
+    if (result_shape.empty()) {
+        std::ostringstream ss;
+        ss << "Cannot broadcast shapes for comparison";
+        throw std::runtime_error(ss.str());
+    }
+
+    auto result = std::make_shared<ndarray>(result_shape, py::dtype::of<bool>());
+
+    T const* a_ptr = a.typed_data<T>();
+    T const* b_ptr = b.typed_data<T>();
+    bool* r_ptr = result->typed_data<bool>();
+
+    py::ssize_t n = 1;
+    for (auto dim : result_shape) n *= dim;
+
+    auto result_strides = compute_element_strides(result_shape);
+    auto a_strides = compute_element_strides(a.shape());
+    auto b_strides = compute_element_strides(b.shape());
+
+    auto const& a_shape = a.shape();
+    auto const& b_shape = b.shape();
+
+    py::gil_scoped_release release;
+    hpx::for_each(hpx::execution::par, r_ptr, r_ptr + n,
+        [=](bool& r) {
+            py::ssize_t flat_idx = &r - r_ptr;
+            py::ssize_t a_idx = broadcast_index(flat_idx, result_shape, result_strides, a_shape, a_strides);
+            py::ssize_t b_idx = broadcast_index(flat_idx, result_shape, result_strides, b_shape, b_strides);
+            r = op(a_ptr[a_idx], b_ptr[b_idx]);
+        });
+
+    return result;
+}
+
+// Comparison with automatic broadcasting
+template<typename T, typename Op>
+std::shared_ptr<ndarray> compare_op(ndarray const& a, ndarray const& b, Op op) {
+    if (shapes_equal(a.shape(), b.shape())) {
+        return compare_op_same_shape<T>(a, b, op);
+    }
+    return compare_op_broadcast<T>(a, b, op);
 }
 
 template<typename T, typename Op>
