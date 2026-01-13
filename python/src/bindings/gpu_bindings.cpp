@@ -19,6 +19,14 @@
 
 #include <cuda_runtime.h>
 
+// Thrust includes for GPU-native reductions
+#include <thrust/device_ptr.h>
+#include <thrust/reduce.h>
+#include <thrust/transform_reduce.h>
+#include <thrust/extrema.h>
+#include <thrust/functional.h>
+#include <thrust/execution_policy.h>
+
 #include <vector>
 #include <string>
 #include <memory>
@@ -503,17 +511,129 @@ void synchronize_device(int device_id = -1) {
     }
 }
 
-// GPU sum reduction using thrust (if available) or simple implementation
+// ============================================================================
+// GPU-Native Reductions using Thrust (Phase 10)
+// ============================================================================
+// These functions perform reductions entirely on the GPU without copying
+// data back to the host. They use Thrust's parallel algorithms.
+
+// GPU sum reduction using Thrust
 template<typename T>
 T gpu_sum(GPUArray<T>& arr) {
-    // For now, copy to host and compute there
-    // TODO: Use thrust or custom kernel for GPU-native reduction
-    auto host = arr.to_numpy();
-    T sum = 0;
-    for (py::ssize_t i = 0; i < arr.size(); ++i) {
-        sum += host.data()[i];
+    int old_device;
+    cudaGetDevice(&old_device);
+    cudaSetDevice(arr.device_id());
+
+    thrust::device_ptr<T> dev_ptr(arr.data());
+    T result = thrust::reduce(thrust::device, dev_ptr, dev_ptr + arr.size(), T(0), thrust::plus<T>());
+
+    cudaSetDevice(old_device);
+    return result;
+}
+
+// GPU product reduction using Thrust
+template<typename T>
+T gpu_prod(GPUArray<T>& arr) {
+    int old_device;
+    cudaGetDevice(&old_device);
+    cudaSetDevice(arr.device_id());
+
+    thrust::device_ptr<T> dev_ptr(arr.data());
+    T result = thrust::reduce(thrust::device, dev_ptr, dev_ptr + arr.size(), T(1), thrust::multiplies<T>());
+
+    cudaSetDevice(old_device);
+    return result;
+}
+
+// GPU min using Thrust
+template<typename T>
+T gpu_min(GPUArray<T>& arr) {
+    if (arr.size() == 0) {
+        return std::numeric_limits<T>::quiet_NaN();
     }
-    return sum;
+
+    int old_device;
+    cudaGetDevice(&old_device);
+    cudaSetDevice(arr.device_id());
+
+    thrust::device_ptr<T> dev_ptr(arr.data());
+    auto result_iter = thrust::min_element(thrust::device, dev_ptr, dev_ptr + arr.size());
+    T result = *result_iter;
+
+    cudaSetDevice(old_device);
+    return result;
+}
+
+// GPU max using Thrust
+template<typename T>
+T gpu_max(GPUArray<T>& arr) {
+    if (arr.size() == 0) {
+        return std::numeric_limits<T>::quiet_NaN();
+    }
+
+    int old_device;
+    cudaGetDevice(&old_device);
+    cudaSetDevice(arr.device_id());
+
+    thrust::device_ptr<T> dev_ptr(arr.data());
+    auto result_iter = thrust::max_element(thrust::device, dev_ptr, dev_ptr + arr.size());
+    T result = *result_iter;
+
+    cudaSetDevice(old_device);
+    return result;
+}
+
+// GPU mean using Thrust
+template<typename T>
+T gpu_mean(GPUArray<T>& arr) {
+    if (arr.size() == 0) return T(0);
+    return gpu_sum(arr) / static_cast<T>(arr.size());
+}
+
+// Helper functor for variance calculation (can be used with thrust)
+template<typename T>
+struct variance_functor {
+    T mean;
+
+    __host__ __device__
+    variance_functor(T m) : mean(m) {}
+
+    __host__ __device__
+    T operator()(const T& x) const {
+        T diff = x - mean;
+        return diff * diff;
+    }
+};
+
+// GPU variance using Thrust transform_reduce
+template<typename T>
+T gpu_var(GPUArray<T>& arr) {
+    if (arr.size() == 0) return T(0);
+
+    T m = gpu_mean(arr);
+
+    int old_device;
+    cudaGetDevice(&old_device);
+    cudaSetDevice(arr.device_id());
+
+    thrust::device_ptr<T> dev_ptr(arr.data());
+
+    T sum_sq = thrust::transform_reduce(
+        thrust::device,
+        dev_ptr, dev_ptr + arr.size(),
+        variance_functor<T>(m),
+        T(0),
+        thrust::plus<T>()
+    );
+
+    cudaSetDevice(old_device);
+    return sum_sq / static_cast<T>(arr.size());
+}
+
+// GPU standard deviation
+template<typename T>
+T gpu_std(GPUArray<T>& arr) {
+    return std::sqrt(gpu_var(arr));
 }
 
 // Bind GPU array type
@@ -701,10 +821,41 @@ Note: You must call hpx.gpu.enable_async() before using async operations.
     }, py::arg("arr"), py::arg("device") = 0,
        "Create a GPU array from a numpy array");
 
-    // GPU reduction operations
+    // GPU reduction operations (GPU-native using Thrust - Phase 10)
     gpu.def("sum", [](GPUArray<double>& arr) {
         return gpu_sum(arr);
-    }, py::arg("arr"), "Sum all elements of a GPU array");
+    }, py::arg("arr"),
+       "Sum all elements of a GPU array (GPU-native using Thrust)");
+
+    gpu.def("prod", [](GPUArray<double>& arr) {
+        return gpu_prod(arr);
+    }, py::arg("arr"),
+       "Product of all elements of a GPU array (GPU-native using Thrust)");
+
+    gpu.def("min", [](GPUArray<double>& arr) {
+        return gpu_min(arr);
+    }, py::arg("arr"),
+       "Minimum element of a GPU array (GPU-native using Thrust)");
+
+    gpu.def("max", [](GPUArray<double>& arr) {
+        return gpu_max(arr);
+    }, py::arg("arr"),
+       "Maximum element of a GPU array (GPU-native using Thrust)");
+
+    gpu.def("mean", [](GPUArray<double>& arr) {
+        return gpu_mean(arr);
+    }, py::arg("arr"),
+       "Mean of all elements of a GPU array (GPU-native using Thrust)");
+
+    gpu.def("var", [](GPUArray<double>& arr) {
+        return gpu_var(arr);
+    }, py::arg("arr"),
+       "Variance of all elements of a GPU array (GPU-native using Thrust)");
+
+    gpu.def("std", [](GPUArray<double>& arr) {
+        return gpu_std(arr);
+    }, py::arg("arr"),
+       "Standard deviation of all elements of a GPU array (GPU-native)");
 
     // Memory info
     gpu.def("memory_info", [](int device) {

@@ -162,6 +162,59 @@ class TestGPUOperations:
         result = hpx_runtime.gpu.sum(arr)
         assert result == 100.0
 
+    def test_gpu_prod(self, hpx_runtime):
+        """gpu.prod should compute product of all elements."""
+        arr = hpx_runtime.gpu.full([5], 2.0)
+        result = hpx_runtime.gpu.prod(arr)
+        assert result == 32.0  # 2^5
+
+    def test_gpu_min(self, hpx_runtime):
+        """gpu.min should find minimum element."""
+        np_arr = np.array([5.0, 2.0, 8.0, 1.0, 9.0])
+        arr = hpx_runtime.gpu.from_numpy(np_arr)
+        result = hpx_runtime.gpu.min(arr)
+        assert result == 1.0
+
+    def test_gpu_max(self, hpx_runtime):
+        """gpu.max should find maximum element."""
+        np_arr = np.array([5.0, 2.0, 8.0, 1.0, 9.0])
+        arr = hpx_runtime.gpu.from_numpy(np_arr)
+        result = hpx_runtime.gpu.max(arr)
+        assert result == 9.0
+
+    def test_gpu_mean(self, hpx_runtime):
+        """gpu.mean should compute mean of all elements."""
+        np_arr = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        arr = hpx_runtime.gpu.from_numpy(np_arr)
+        result = hpx_runtime.gpu.mean(arr)
+        np.testing.assert_almost_equal(result, 3.0)
+
+    def test_gpu_var(self, hpx_runtime):
+        """gpu.var should compute variance of all elements."""
+        np_arr = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        arr = hpx_runtime.gpu.from_numpy(np_arr)
+        result = hpx_runtime.gpu.var(arr)
+        expected = np.var(np_arr)  # population variance
+        np.testing.assert_almost_equal(result, expected)
+
+    def test_gpu_std(self, hpx_runtime):
+        """gpu.std should compute standard deviation."""
+        np_arr = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        arr = hpx_runtime.gpu.from_numpy(np_arr)
+        result = hpx_runtime.gpu.std(arr)
+        expected = np.std(np_arr)  # population std
+        np.testing.assert_almost_equal(result, expected)
+
+    def test_gpu_reductions_large_array(self, hpx_runtime):
+        """GPU reductions should work on large arrays."""
+        np_arr = np.arange(100000, dtype=np.float64)
+        arr = hpx_runtime.gpu.from_numpy(np_arr)
+
+        np.testing.assert_almost_equal(hpx_runtime.gpu.sum(arr), np.sum(np_arr), decimal=0)
+        np.testing.assert_almost_equal(hpx_runtime.gpu.mean(arr), np.mean(np_arr), decimal=2)
+        assert hpx_runtime.gpu.min(arr) == np.min(np_arr)
+        assert hpx_runtime.gpu.max(arr) == np.max(np_arr)
+
 
 class TestGPUStubsWhenUnavailable:
     """Test GPU stubs work when CUDA unavailable."""

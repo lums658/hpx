@@ -22,6 +22,8 @@
 #include <mutex>
 #include <unordered_map>
 #include <sstream>
+#include <limits>
+#include <cmath>
 
 namespace py = pybind11;
 
@@ -473,19 +475,160 @@ SYCLArray<T> sycl_from_numpy(py::array_t<T> arr, int device = 0) {
 }
 
 // --------------------------------------------------------------------------
-// Reduction using SYCL
+// GPU-Native Reductions using SYCL (Phase 10)
 // --------------------------------------------------------------------------
+// These use SYCL's built-in reduction API for GPU-native reductions.
 
+// SYCL sum reduction using reduction API
 template<typename T>
-T sycl_sum(SYCLArray<T> const& arr) {
-    // For now, copy to host and sum there
-    // Future: use SYCL reduction
-    auto np_arr = arr.to_numpy();
-    T sum = T{0};
-    for (py::ssize_t i = 0; i < arr.size(); ++i) {
-        sum += np_arr.data()[i];
+T sycl_sum(SYCLArray<T>& arr) {
+    if (arr.size() == 0) return T{0};
+
+    auto& exec = SYCLExecutorManager::instance().get_executor(arr.device_id());
+    auto& queue = exec.get_queue();
+
+    T result = T{0};
+    {
+        ::sycl::buffer<T, 1> result_buf(&result, 1);
+
+        queue.submit([&](::sycl::handler& h) {
+            auto reduction = ::sycl::reduction(result_buf, h, ::sycl::plus<T>());
+            T* data = arr.data();
+            auto n = arr.size();
+
+            h.parallel_for(::sycl::range<1>(n), reduction,
+                          [=](::sycl::id<1> idx, auto& sum) {
+                              sum += data[idx];
+                          });
+        }).wait();
     }
-    return sum;
+
+    return result;
+}
+
+// SYCL product reduction
+template<typename T>
+T sycl_prod(SYCLArray<T>& arr) {
+    if (arr.size() == 0) return T{1};
+
+    auto& exec = SYCLExecutorManager::instance().get_executor(arr.device_id());
+    auto& queue = exec.get_queue();
+
+    T result = T{1};
+    {
+        ::sycl::buffer<T, 1> result_buf(&result, 1);
+
+        queue.submit([&](::sycl::handler& h) {
+            auto reduction = ::sycl::reduction(result_buf, h, ::sycl::multiplies<T>());
+            T* data = arr.data();
+            auto n = arr.size();
+
+            h.parallel_for(::sycl::range<1>(n), reduction,
+                          [=](::sycl::id<1> idx, auto& prod) {
+                              prod *= data[idx];
+                          });
+        }).wait();
+    }
+
+    return result;
+}
+
+// SYCL min reduction
+template<typename T>
+T sycl_min(SYCLArray<T>& arr) {
+    if (arr.size() == 0) return std::numeric_limits<T>::quiet_NaN();
+
+    auto& exec = SYCLExecutorManager::instance().get_executor(arr.device_id());
+    auto& queue = exec.get_queue();
+
+    T result = std::numeric_limits<T>::max();
+    {
+        ::sycl::buffer<T, 1> result_buf(&result, 1);
+
+        queue.submit([&](::sycl::handler& h) {
+            auto reduction = ::sycl::reduction(result_buf, h, ::sycl::minimum<T>());
+            T* data = arr.data();
+            auto n = arr.size();
+
+            h.parallel_for(::sycl::range<1>(n), reduction,
+                          [=](::sycl::id<1> idx, auto& min_val) {
+                              min_val.combine(data[idx]);
+                          });
+        }).wait();
+    }
+
+    return result;
+}
+
+// SYCL max reduction
+template<typename T>
+T sycl_max(SYCLArray<T>& arr) {
+    if (arr.size() == 0) return std::numeric_limits<T>::quiet_NaN();
+
+    auto& exec = SYCLExecutorManager::instance().get_executor(arr.device_id());
+    auto& queue = exec.get_queue();
+
+    T result = std::numeric_limits<T>::lowest();
+    {
+        ::sycl::buffer<T, 1> result_buf(&result, 1);
+
+        queue.submit([&](::sycl::handler& h) {
+            auto reduction = ::sycl::reduction(result_buf, h, ::sycl::maximum<T>());
+            T* data = arr.data();
+            auto n = arr.size();
+
+            h.parallel_for(::sycl::range<1>(n), reduction,
+                          [=](::sycl::id<1> idx, auto& max_val) {
+                              max_val.combine(data[idx]);
+                          });
+        }).wait();
+    }
+
+    return result;
+}
+
+// SYCL mean
+template<typename T>
+T sycl_mean(SYCLArray<T>& arr) {
+    if (arr.size() == 0) return T{0};
+    return sycl_sum(arr) / static_cast<T>(arr.size());
+}
+
+// SYCL variance (two-pass)
+template<typename T>
+T sycl_var(SYCLArray<T>& arr) {
+    if (arr.size() == 0) return T{0};
+
+    T m = sycl_mean(arr);
+
+    auto& exec = SYCLExecutorManager::instance().get_executor(arr.device_id());
+    auto& queue = exec.get_queue();
+
+    T sum_sq = T{0};
+    {
+        ::sycl::buffer<T, 1> result_buf(&sum_sq, 1);
+
+        queue.submit([&](::sycl::handler& h) {
+            auto reduction = ::sycl::reduction(result_buf, h, ::sycl::plus<T>());
+            T* data = arr.data();
+            auto n = arr.size();
+            T mean_val = m;
+
+            h.parallel_for(::sycl::range<1>(n), reduction,
+                          [=](::sycl::id<1> idx, auto& sum) {
+                              T diff = data[idx] - mean_val;
+                              sum += diff * diff;
+                          });
+        }).wait();
+    }
+
+    return sum_sq / static_cast<T>(arr.size());
+}
+
+// SYCL standard deviation
+template<typename T>
+T sycl_std(SYCLArray<T>& arr) {
+    return std::sqrt(sycl_var(arr));
 }
 
 // --------------------------------------------------------------------------
@@ -641,11 +784,43 @@ void bind_sycl(py::module_& m) {
        "Create SYCL array from numpy array");
 
     // --------------------------------------------------------------------------
-    // Reductions
+    // Reductions (GPU-native using SYCL reduction API - Phase 10)
     // --------------------------------------------------------------------------
 
-    sycl.def("sum", &sycl_sum<double>,
-             py::arg("arr"), "Sum all elements of a SYCL array");
+    sycl.def("sum", [](SYCLArray<double>& arr) {
+        return sycl_sum(arr);
+    }, py::arg("arr"),
+       "Sum all elements of a SYCL array (GPU-native)");
+
+    sycl.def("prod", [](SYCLArray<double>& arr) {
+        return sycl_prod(arr);
+    }, py::arg("arr"),
+       "Product of all elements of a SYCL array (GPU-native)");
+
+    sycl.def("min", [](SYCLArray<double>& arr) {
+        return sycl_min(arr);
+    }, py::arg("arr"),
+       "Minimum element of a SYCL array (GPU-native)");
+
+    sycl.def("max", [](SYCLArray<double>& arr) {
+        return sycl_max(arr);
+    }, py::arg("arr"),
+       "Maximum element of a SYCL array (GPU-native)");
+
+    sycl.def("mean", [](SYCLArray<double>& arr) {
+        return sycl_mean(arr);
+    }, py::arg("arr"),
+       "Mean of all elements of a SYCL array (GPU-native)");
+
+    sycl.def("var", [](SYCLArray<double>& arr) {
+        return sycl_var(arr);
+    }, py::arg("arr"),
+       "Variance of all elements of a SYCL array (GPU-native)");
+
+    sycl.def("std", [](SYCLArray<double>& arr) {
+        return sycl_std(arr);
+    }, py::arg("arr"),
+       "Standard deviation of all elements of a SYCL array (GPU-native)");
 }
 
 #else  // No SYCL support

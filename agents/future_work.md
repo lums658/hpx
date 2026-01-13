@@ -68,13 +68,41 @@ Deferred features and enhancements for future phases.
 ### Tests
 - [x] 32 new partitioned_array tests (408 total tests passing)
 
-## Phase 10: GPU-Native Kernels
+## Phase 10: GPU-Native Kernels (COMPLETED)
 
-### GPU-Native Reductions (Phase 5 deferred)
-- Thrust-based GPU sum/reduce for CUDA
-- SYCL parallel STL reductions
-- Currently falls back to CPU
+### CUDA-Native Reductions (Thrust)
+- [x] `gpu.sum()` - GPU-native sum using `thrust::reduce`
+- [x] `gpu.prod()` - GPU-native product using `thrust::reduce`
+- [x] `gpu.min()` - GPU-native min using `thrust::min_element`
+- [x] `gpu.max()` - GPU-native max using `thrust::max_element`
+- [x] `gpu.mean()` - GPU-native mean (sum/size)
+- [x] `gpu.var()` - GPU-native variance using `thrust::transform_reduce`
+- [x] `gpu.std()` - GPU-native standard deviation
+
+### SYCL-Native Reductions
+- [x] `sycl.sum()` - GPU-native sum using SYCL reduction API
+- [x] `sycl.prod()` - GPU-native product using SYCL reduction API
+- [x] `sycl.min()` - GPU-native min using SYCL reduction API
+- [x] `sycl.max()` - GPU-native max using SYCL reduction API
+- [x] `sycl.mean()` - GPU-native mean
+- [x] `sycl.var()` - GPU-native variance
+- [x] `sycl.std()` - GPU-native standard deviation
+
+### Tests
+- [x] 14 new GPU reduction tests (7 CUDA + 7 SYCL)
+- [x] All tests pass (408 passed, 68 skipped on non-GPU systems)
+
+## Future Enhancements (Deferred)
 
 ### GPU Transforms
 - Custom CUDA/SYCL kernels for transforms
 - Multi-GPU support with HPX distribution
+
+### Advanced Shape Operations
+- Transpose support
+- Squeeze/expand_dims
+
+### Advanced Indexing
+- Boolean mask indexing: `arr[arr > 5]`
+- Fancy indexing: `arr[[1, 3, 5]]`
+- Integer array indexing
