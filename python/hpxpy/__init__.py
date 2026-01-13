@@ -121,6 +121,20 @@ __all__ = [
     "distributed_ones",
     "distributed_full",
     "distributed_from_numpy",
+    # Partitioned arrays (Phase 11) - HPX partitioned_vector
+    "PartitionedArray",
+    "partitioned_zeros",
+    "partitioned_ones",
+    "partitioned_full",
+    "partitioned_arange",
+    "partitioned_from_numpy",
+    "distributed_sum",
+    "distributed_mean",
+    "distributed_min",
+    "distributed_max",
+    "distributed_var",
+    "distributed_std",
+    "distributed_prod",
     # Multi-locality launcher (Phase 4)
     "launcher",
     # GPU support (Phase 5)
@@ -203,6 +217,20 @@ try:
         distributed_ones,
         distributed_full,
         distributed_from_numpy,
+        # Partitioned arrays (Phase 11) - HPX partitioned_vector
+        PartitionedArray,
+        partitioned_zeros,
+        partitioned_ones,
+        partitioned_full,
+        partitioned_arange,
+        partitioned_from_numpy,
+        distributed_sum,
+        distributed_mean,
+        distributed_min,
+        distributed_max,
+        distributed_var,
+        distributed_std,
+        distributed_prod,
     )
     # DistributionPolicy is in the distribution submodule
     from hpxpy._core.distribution import DistributionPolicy

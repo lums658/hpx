@@ -85,6 +85,7 @@ target_include_directories(_core PRIVATE
 target_link_libraries(_core PRIVATE
   HPX::hpx
   HPX::wrap_main
+  HPX::partitioned_vector_component
 )
 
 target_compile_definitions(_core PRIVATE

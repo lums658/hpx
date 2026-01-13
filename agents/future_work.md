@@ -46,15 +46,27 @@ Deferred features and enhancements for future phases.
 - Fancy indexing: `arr[[1, 3, 5]]`
 - Integer array indexing
 
-## Phase 11: True Distribution
+## Phase 11: True Distribution (COMPLETED)
 
 ### partitioned_vector Integration
-- Connect distributed_array to HPX partitioned_vector
-- True multi-locality data distribution
+- [x] `PartitionedArray` class using HPX `partitioned_vector<double>`
+- [x] Factory functions: `partitioned_zeros`, `partitioned_ones`, `partitioned_full`, `partitioned_arange`
+- [x] `partitioned_from_numpy` for creating from NumPy arrays
+- [x] Auto-distribution across all available HPX localities
 
 ### Distributed Algorithms
-- Parallel algorithms on distributed arrays
-- Cross-locality communication
+- [x] Distributed sum with `hpx::reduce` (segmented algorithm)
+- [x] Distributed product with `hpx::reduce`
+- [x] Distributed min/max with `hpx::min_element/max_element`
+- [x] Distributed mean, var, std
+- [x] Element-wise operations: `add_scalar`, `multiply_scalar`, `fill`
+
+### Free Functions for Reductions
+- [x] `distributed_sum`, `distributed_mean`, `distributed_min`, `distributed_max`
+- [x] `distributed_var`, `distributed_std`, `distributed_prod`
+
+### Tests
+- [x] 32 new partitioned_array tests (408 total tests passing)
 
 ## Phase 10: GPU-Native Kernels
 
