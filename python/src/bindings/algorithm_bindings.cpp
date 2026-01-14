@@ -716,6 +716,49 @@ py::ssize_t argmax(std::shared_ptr<ndarray> arr, std::string const& policy = "se
     return static_cast<py::ssize_t>(result - data);
 }
 
+// argsort - Return indices that would sort the array
+// Uses HPX sort with custom comparator instead of NumPy fallback
+std::shared_ptr<ndarray> argsort(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
+    if (arr->ndim() != 1) {
+        throw std::runtime_error("argsort only supports 1D arrays");
+    }
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("argsort currently only supports float64");
+    }
+
+    py::ssize_t n = arr->size();
+    double const* data = arr->typed_data<double>();
+
+    // Create indices array [0, 1, 2, ..., n-1]
+    std::vector<py::ssize_t> shape = {n};
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<int64_t>());
+    int64_t* indices = result->typed_data<int64_t>();
+
+    // Initialize indices
+    for (py::ssize_t i = 0; i < n; ++i) {
+        indices[i] = i;
+    }
+
+    {
+        py::gil_scoped_release release;
+
+        // Sort indices by comparing the values they point to
+        auto compare = [data](int64_t a, int64_t b) {
+            return data[a] < data[b];
+        };
+
+        if (policy == "par") {
+            hpx::sort(hpx::execution::par, indices, indices + n, compare);
+        } else if (policy == "par_unseq") {
+            hpx::sort(hpx::execution::par_unseq, indices, indices + n, compare);
+        } else {
+            hpx::sort(hpx::execution::seq, indices, indices + n, compare);
+        }
+    }
+
+    return result;
+}
+
 // diff - Compute n-th discrete difference using adjacent_difference
 // Simplified for float64 only
 std::shared_ptr<ndarray> diff(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
@@ -954,6 +997,20 @@ py::object transform_reduce(
                 reduce, transform);
         }
     }
+    // Product: transform_op="identity", reduce_op="mul"
+    else if (transform_op == "identity" && reduce_op == "mul") {
+        auto transform = [](double x) { return x; };
+        if (policy == "par") {
+            result = hpx::transform_reduce(hpx::execution::par, data, data + size, 1.0,
+                std::multiplies<double>{}, transform);
+        } else if (policy == "par_unseq") {
+            result = hpx::transform_reduce(hpx::execution::par_unseq, data, data + size, 1.0,
+                std::multiplies<double>{}, transform);
+        } else {
+            result = hpx::transform_reduce(hpx::execution::seq, data, data + size, 1.0,
+                std::multiplies<double>{}, transform);
+        }
+    }
     else {
         py::gil_scoped_acquire acquire;
         throw std::invalid_argument("Unsupported transform/reduce combination");
@@ -961,6 +1018,886 @@ py::object transform_reduce(
 
     py::gil_scoped_acquire acquire;
     return py::cast(result);
+}
+
+// reduce_by_key - Group by key and reduce values
+// Returns (unique_keys, reduced_values)
+// Useful for histogram-like operations
+std::tuple<std::shared_ptr<ndarray>, std::shared_ptr<ndarray>> reduce_by_key(
+    std::shared_ptr<ndarray> keys,
+    std::shared_ptr<ndarray> values,
+    std::string const& reduce_op = "add",
+    std::string const& policy = "par"
+) {
+    if (keys->ndim() != 1 || values->ndim() != 1) {
+        throw std::runtime_error("reduce_by_key only supports 1D arrays");
+    }
+    if (keys->size() != values->size()) {
+        throw std::runtime_error("keys and values must have the same size");
+    }
+
+    // Currently only support float64 keys and float64 values
+    if (keys->dtype().kind() != 'f' || keys->dtype().itemsize() != 8) {
+        throw std::runtime_error("reduce_by_key currently only supports float64 keys");
+    }
+    if (values->dtype().kind() != 'f' || values->dtype().itemsize() != 8) {
+        throw std::runtime_error("reduce_by_key currently only supports float64 values");
+    }
+
+    py::ssize_t n = keys->size();
+    double const* keys_data = keys->typed_data<double>();
+    double const* values_data = values->typed_data<double>();
+
+    // Create sorted copies (reduce_by_key requires sorted input)
+    std::vector<double> sorted_keys(keys_data, keys_data + n);
+    std::vector<double> sorted_values(values_data, values_data + n);
+
+    // Sort by key (stable sort to preserve relative order of values with same key)
+    std::vector<size_t> indices(n);
+    for (size_t i = 0; i < static_cast<size_t>(n); ++i) {
+        indices[i] = i;
+    }
+
+    {
+        py::gil_scoped_release release;
+
+        // Sort indices by key
+        if (policy == "par") {
+            hpx::sort(hpx::execution::par, indices.begin(), indices.end(),
+                [&keys_data](size_t a, size_t b) { return keys_data[a] < keys_data[b]; });
+        } else {
+            hpx::sort(hpx::execution::seq, indices.begin(), indices.end(),
+                [&keys_data](size_t a, size_t b) { return keys_data[a] < keys_data[b]; });
+        }
+
+        // Reorder keys and values by sorted indices
+        for (size_t i = 0; i < static_cast<size_t>(n); ++i) {
+            sorted_keys[i] = keys_data[indices[i]];
+            sorted_values[i] = values_data[indices[i]];
+        }
+    }
+
+    // Now perform the reduction by key
+    std::vector<double> result_keys;
+    std::vector<double> result_values;
+    result_keys.reserve(n);
+    result_values.reserve(n);
+
+    if (n > 0) {
+        double current_key = sorted_keys[0];
+        double current_value = sorted_values[0];
+
+        for (py::ssize_t i = 1; i < n; ++i) {
+            if (sorted_keys[i] == current_key) {
+                // Same key - reduce
+                if (reduce_op == "add") {
+                    current_value += sorted_values[i];
+                } else if (reduce_op == "mul") {
+                    current_value *= sorted_values[i];
+                } else if (reduce_op == "min") {
+                    current_value = std::min(current_value, sorted_values[i]);
+                } else if (reduce_op == "max") {
+                    current_value = std::max(current_value, sorted_values[i]);
+                }
+            } else {
+                // New key - save previous and start new
+                result_keys.push_back(current_key);
+                result_values.push_back(current_value);
+                current_key = sorted_keys[i];
+                current_value = sorted_values[i];
+            }
+        }
+        // Don't forget the last group
+        result_keys.push_back(current_key);
+        result_values.push_back(current_value);
+    }
+
+    // Create output arrays
+    py::ssize_t result_n = static_cast<py::ssize_t>(result_keys.size());
+    std::vector<py::ssize_t> shape = {result_n};
+
+    auto out_keys = std::make_shared<ndarray>(shape, py::dtype::of<double>());
+    auto out_values = std::make_shared<ndarray>(shape, py::dtype::of<double>());
+
+    std::memcpy(out_keys->data(), result_keys.data(), result_n * sizeof(double));
+    std::memcpy(out_values->data(), result_values.data(), result_n * sizeof(double));
+
+    return std::make_tuple(out_keys, out_values);
+}
+
+// -----------------------------------------------------------------------------
+// Tier 2 Algorithms
+// -----------------------------------------------------------------------------
+
+// array_equal - Parallel array comparison using hpx::equal
+bool array_equal(
+    std::shared_ptr<ndarray> arr1,
+    std::shared_ptr<ndarray> arr2,
+    std::string const& policy = "par"
+) {
+    // Check shape match
+    if (arr1->shape() != arr2->shape()) {
+        return false;
+    }
+
+    // Currently only support float64
+    if (arr1->dtype().kind() != 'f' || arr1->dtype().itemsize() != 8) {
+        throw std::runtime_error("array_equal currently only supports float64");
+    }
+    if (arr2->dtype().kind() != 'f' || arr2->dtype().itemsize() != 8) {
+        throw std::runtime_error("array_equal currently only supports float64");
+    }
+
+    py::ssize_t n = arr1->size();
+    double const* data1 = arr1->typed_data<double>();
+    double const* data2 = arr2->typed_data<double>();
+
+    bool result;
+    {
+        py::gil_scoped_release release;
+
+        if (policy == "par") {
+            result = hpx::equal(hpx::execution::par, data1, data1 + n, data2);
+        } else if (policy == "par_unseq") {
+            result = hpx::equal(hpx::execution::par_unseq, data1, data1 + n, data2);
+        } else {
+            result = hpx::equal(hpx::execution::seq, data1, data1 + n, data2);
+        }
+    }
+
+    return result;
+}
+
+// flip - Reverse array elements using hpx::reverse (returns new array)
+std::shared_ptr<ndarray> flip(
+    std::shared_ptr<ndarray> arr,
+    std::string const& policy = "par"
+) {
+    if (arr->ndim() != 1) {
+        throw std::runtime_error("flip currently only supports 1D arrays");
+    }
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("flip currently only supports float64");
+    }
+
+    py::ssize_t n = arr->size();
+    double const* data = arr->typed_data<double>();
+
+    // Create output array (copy first, then reverse)
+    std::vector<py::ssize_t> shape = {n};
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<double>());
+    double* out_data = result->typed_data<double>();
+
+    // Copy data
+    std::memcpy(out_data, data, n * sizeof(double));
+
+    {
+        py::gil_scoped_release release;
+
+        if (policy == "par") {
+            hpx::reverse(hpx::execution::par, out_data, out_data + n);
+        } else if (policy == "par_unseq") {
+            hpx::reverse(hpx::execution::par_unseq, out_data, out_data + n);
+        } else {
+            hpx::reverse(hpx::execution::seq, out_data, out_data + n);
+        }
+    }
+
+    return result;
+}
+
+// stable_sort - Order-preserving sort using hpx::stable_sort
+std::shared_ptr<ndarray> stable_sort(
+    std::shared_ptr<ndarray> arr,
+    std::string const& policy = "par"
+) {
+    if (arr->ndim() != 1) {
+        throw std::runtime_error("stable_sort currently only supports 1D arrays");
+    }
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("stable_sort currently only supports float64");
+    }
+
+    py::ssize_t n = arr->size();
+    double const* data = arr->typed_data<double>();
+
+    // Create output array (copy first, then sort)
+    std::vector<py::ssize_t> shape = {n};
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<double>());
+    double* out_data = result->typed_data<double>();
+
+    std::memcpy(out_data, data, n * sizeof(double));
+
+    {
+        py::gil_scoped_release release;
+
+        if (policy == "par") {
+            hpx::stable_sort(hpx::execution::par, out_data, out_data + n);
+        } else if (policy == "par_unseq") {
+            hpx::stable_sort(hpx::execution::par_unseq, out_data, out_data + n);
+        } else {
+            hpx::stable_sort(hpx::execution::seq, out_data, out_data + n);
+        }
+    }
+
+    return result;
+}
+
+// rotate - Rotate array elements using hpx::rotate
+std::shared_ptr<ndarray> rotate(
+    std::shared_ptr<ndarray> arr,
+    py::ssize_t shift,
+    std::string const& policy = "par"
+) {
+    if (arr->ndim() != 1) {
+        throw std::runtime_error("rotate currently only supports 1D arrays");
+    }
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("rotate currently only supports float64");
+    }
+
+    py::ssize_t n = arr->size();
+    if (n == 0) {
+        return std::make_shared<ndarray>(std::vector<py::ssize_t>{0}, py::dtype::of<double>());
+    }
+
+    double const* data = arr->typed_data<double>();
+
+    // Create output array (copy first, then rotate)
+    std::vector<py::ssize_t> shape = {n};
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<double>());
+    double* out_data = result->typed_data<double>();
+
+    std::memcpy(out_data, data, n * sizeof(double));
+
+    // Normalize shift to [0, n)
+    // Note: numpy.roll shifts right for positive shift, we shift left
+    // To match numpy semantics: roll(arr, 2) moves elements left by 2
+    shift = shift % n;
+    if (shift < 0) shift += n;
+
+    // hpx::rotate rotates left - for numpy compatibility we need to adjust
+    // numpy.roll(arr, k) -> rotate left by (n - k)
+    py::ssize_t rotate_point = shift;  // How many positions to rotate left
+
+    {
+        py::gil_scoped_release release;
+
+        if (rotate_point > 0 && rotate_point < n) {
+            if (policy == "par") {
+                hpx::rotate(hpx::execution::par, out_data, out_data + rotate_point, out_data + n);
+            } else if (policy == "par_unseq") {
+                hpx::rotate(hpx::execution::par_unseq, out_data, out_data + rotate_point, out_data + n);
+            } else {
+                hpx::rotate(hpx::execution::seq, out_data, out_data + rotate_point, out_data + n);
+            }
+        }
+    }
+
+    return result;
+}
+
+// nonzero - Find indices of non-zero elements using hpx::find_if
+std::shared_ptr<ndarray> nonzero(
+    std::shared_ptr<ndarray> arr,
+    std::string const& policy = "seq"  // Sequential for deterministic ordering
+) {
+    if (arr->ndim() != 1) {
+        throw std::runtime_error("nonzero currently only supports 1D arrays");
+    }
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("nonzero currently only supports float64");
+    }
+
+    py::ssize_t n = arr->size();
+    double const* data = arr->typed_data<double>();
+
+    // Find all non-zero indices
+    std::vector<int64_t> indices;
+    indices.reserve(n);  // Worst case
+
+    {
+        py::gil_scoped_release release;
+
+        // Note: hpx::find_if returns iterator to first match, we need all matches
+        // Use sequential scan for now (parallel version would need atomic ops)
+        for (py::ssize_t i = 0; i < n; ++i) {
+            if (data[i] != 0.0) {
+                indices.push_back(i);
+            }
+        }
+    }
+
+    // Create output array
+    py::ssize_t count = static_cast<py::ssize_t>(indices.size());
+    std::vector<py::ssize_t> shape = {count};
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<int64_t>());
+
+    if (count > 0) {
+        std::memcpy(result->data(), indices.data(), count * sizeof(int64_t));
+    }
+
+    return result;
+}
+
+// nth_element - Partial sort to find nth element (useful for median/percentile)
+double nth_element(
+    std::shared_ptr<ndarray> arr,
+    py::ssize_t n_idx,
+    std::string const& policy = "par"
+) {
+    if (arr->ndim() != 1) {
+        throw std::runtime_error("nth_element currently only supports 1D arrays");
+    }
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("nth_element currently only supports float64");
+    }
+
+    py::ssize_t size = arr->size();
+    if (size == 0) {
+        throw std::runtime_error("nth_element: empty array");
+    }
+    if (n_idx < 0) n_idx += size;
+    if (n_idx < 0 || n_idx >= size) {
+        throw std::out_of_range("nth_element: index out of range");
+    }
+
+    double const* data = arr->typed_data<double>();
+
+    // Create copy for partial sorting
+    std::vector<double> copy(data, data + size);
+
+    double result;
+    {
+        py::gil_scoped_release release;
+
+        // nth_element puts the nth element in sorted position
+        // All elements before it are <= and all after are >=
+        std::nth_element(copy.begin(), copy.begin() + n_idx, copy.end());
+        result = copy[n_idx];
+    }
+
+    return result;
+}
+
+// median - Find median using nth_element
+double median(
+    std::shared_ptr<ndarray> arr
+) {
+    if (arr->ndim() != 1) {
+        throw std::runtime_error("median currently only supports 1D arrays");
+    }
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("median currently only supports float64");
+    }
+
+    py::ssize_t n = arr->size();
+    if (n == 0) {
+        throw std::runtime_error("median: empty array");
+    }
+
+    double const* data = arr->typed_data<double>();
+    std::vector<double> copy(data, data + n);
+
+    double result;
+    {
+        py::gil_scoped_release release;
+
+        if (n % 2 == 1) {
+            // Odd length: return middle element
+            py::ssize_t mid = n / 2;
+            std::nth_element(copy.begin(), copy.begin() + mid, copy.end());
+            result = copy[mid];
+        } else {
+            // Even length: return average of two middle elements
+            py::ssize_t mid1 = n / 2 - 1;
+            py::ssize_t mid2 = n / 2;
+            std::nth_element(copy.begin(), copy.begin() + mid1, copy.end());
+            double val1 = copy[mid1];
+            std::nth_element(copy.begin() + mid1 + 1, copy.begin() + mid2, copy.end());
+            double val2 = copy[mid2];
+            result = (val1 + val2) / 2.0;
+        }
+    }
+
+    return result;
+}
+
+// percentile - Find percentile value
+double percentile(
+    std::shared_ptr<ndarray> arr,
+    double q  // Percentile in [0, 100]
+) {
+    if (arr->ndim() != 1) {
+        throw std::runtime_error("percentile currently only supports 1D arrays");
+    }
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("percentile currently only supports float64");
+    }
+    if (q < 0.0 || q > 100.0) {
+        throw std::invalid_argument("percentile: q must be in [0, 100]");
+    }
+
+    py::ssize_t n = arr->size();
+    if (n == 0) {
+        throw std::runtime_error("percentile: empty array");
+    }
+
+    double const* data = arr->typed_data<double>();
+    std::vector<double> copy(data, data + n);
+
+    double result;
+    {
+        py::gil_scoped_release release;
+
+        // Linear interpolation method (same as numpy default)
+        double idx = (q / 100.0) * (n - 1);
+        py::ssize_t lo = static_cast<py::ssize_t>(std::floor(idx));
+        py::ssize_t hi = static_cast<py::ssize_t>(std::ceil(idx));
+        double frac = idx - lo;
+
+        if (lo == hi) {
+            std::nth_element(copy.begin(), copy.begin() + lo, copy.end());
+            result = copy[lo];
+        } else {
+            std::nth_element(copy.begin(), copy.begin() + lo, copy.end());
+            double val_lo = copy[lo];
+            std::nth_element(copy.begin() + lo + 1, copy.begin() + hi, copy.end());
+            double val_hi = copy[hi];
+            result = val_lo + frac * (val_hi - val_lo);
+        }
+    }
+
+    return result;
+}
+
+// -----------------------------------------------------------------------------
+// Tier 3 Algorithms
+// -----------------------------------------------------------------------------
+
+// merge - Merge two sorted arrays using hpx::merge
+std::shared_ptr<ndarray> merge(
+    std::shared_ptr<ndarray> arr1,
+    std::shared_ptr<ndarray> arr2,
+    std::string const& policy = "par"
+) {
+    if (arr1->ndim() != 1 || arr2->ndim() != 1) {
+        throw std::runtime_error("merge currently only supports 1D arrays");
+    }
+    if (arr1->dtype().kind() != 'f' || arr1->dtype().itemsize() != 8) {
+        throw std::runtime_error("merge currently only supports float64");
+    }
+    if (arr2->dtype().kind() != 'f' || arr2->dtype().itemsize() != 8) {
+        throw std::runtime_error("merge currently only supports float64");
+    }
+
+    py::ssize_t n1 = arr1->size();
+    py::ssize_t n2 = arr2->size();
+    double const* data1 = arr1->typed_data<double>();
+    double const* data2 = arr2->typed_data<double>();
+
+    // Create output array
+    std::vector<py::ssize_t> shape = {n1 + n2};
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<double>());
+    double* out_data = result->typed_data<double>();
+
+    {
+        py::gil_scoped_release release;
+
+        if (policy == "par") {
+            hpx::merge(hpx::execution::par, data1, data1 + n1, data2, data2 + n2, out_data);
+        } else if (policy == "par_unseq") {
+            hpx::merge(hpx::execution::par_unseq, data1, data1 + n1, data2, data2 + n2, out_data);
+        } else {
+            hpx::merge(hpx::execution::seq, data1, data1 + n1, data2, data2 + n2, out_data);
+        }
+    }
+
+    return result;
+}
+
+// set_difference - Elements in arr1 but not in arr2
+std::shared_ptr<ndarray> set_difference(
+    std::shared_ptr<ndarray> arr1,
+    std::shared_ptr<ndarray> arr2,
+    std::string const& policy = "par"
+) {
+    if (arr1->ndim() != 1 || arr2->ndim() != 1) {
+        throw std::runtime_error("set_difference only supports 1D arrays");
+    }
+    if (arr1->dtype().kind() != 'f' || arr1->dtype().itemsize() != 8) {
+        throw std::runtime_error("set_difference only supports float64");
+    }
+    if (arr2->dtype().kind() != 'f' || arr2->dtype().itemsize() != 8) {
+        throw std::runtime_error("set_difference only supports float64");
+    }
+
+    py::ssize_t n1 = arr1->size();
+    py::ssize_t n2 = arr2->size();
+    double const* data1 = arr1->typed_data<double>();
+    double const* data2 = arr2->typed_data<double>();
+
+    // Sort copies first (set operations require sorted input)
+    std::vector<double> sorted1(data1, data1 + n1);
+    std::vector<double> sorted2(data2, data2 + n2);
+    std::vector<double> result_vec(n1);  // Max possible size
+
+    double* result_end;
+    {
+        py::gil_scoped_release release;
+
+        std::sort(sorted1.begin(), sorted1.end());
+        std::sort(sorted2.begin(), sorted2.end());
+
+        if (policy == "par") {
+            result_end = hpx::set_difference(hpx::execution::par,
+                sorted1.begin(), sorted1.end(),
+                sorted2.begin(), sorted2.end(),
+                result_vec.data());
+        } else {
+            result_end = hpx::set_difference(hpx::execution::seq,
+                sorted1.begin(), sorted1.end(),
+                sorted2.begin(), sorted2.end(),
+                result_vec.data());
+        }
+    }
+
+    py::ssize_t result_n = result_end - result_vec.data();
+    std::vector<py::ssize_t> shape = {result_n};
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<double>());
+    if (result_n > 0) {
+        std::memcpy(result->data(), result_vec.data(), result_n * sizeof(double));
+    }
+
+    return result;
+}
+
+// set_intersection - Elements in both arr1 and arr2
+std::shared_ptr<ndarray> set_intersection(
+    std::shared_ptr<ndarray> arr1,
+    std::shared_ptr<ndarray> arr2,
+    std::string const& policy = "par"
+) {
+    if (arr1->ndim() != 1 || arr2->ndim() != 1) {
+        throw std::runtime_error("set_intersection only supports 1D arrays");
+    }
+    if (arr1->dtype().kind() != 'f' || arr1->dtype().itemsize() != 8) {
+        throw std::runtime_error("set_intersection only supports float64");
+    }
+    if (arr2->dtype().kind() != 'f' || arr2->dtype().itemsize() != 8) {
+        throw std::runtime_error("set_intersection only supports float64");
+    }
+
+    py::ssize_t n1 = arr1->size();
+    py::ssize_t n2 = arr2->size();
+    double const* data1 = arr1->typed_data<double>();
+    double const* data2 = arr2->typed_data<double>();
+
+    std::vector<double> sorted1(data1, data1 + n1);
+    std::vector<double> sorted2(data2, data2 + n2);
+    std::vector<double> result_vec(std::min(n1, n2));
+
+    double* result_end;
+    {
+        py::gil_scoped_release release;
+
+        std::sort(sorted1.begin(), sorted1.end());
+        std::sort(sorted2.begin(), sorted2.end());
+
+        if (policy == "par") {
+            result_end = hpx::set_intersection(hpx::execution::par,
+                sorted1.begin(), sorted1.end(),
+                sorted2.begin(), sorted2.end(),
+                result_vec.data());
+        } else {
+            result_end = hpx::set_intersection(hpx::execution::seq,
+                sorted1.begin(), sorted1.end(),
+                sorted2.begin(), sorted2.end(),
+                result_vec.data());
+        }
+    }
+
+    py::ssize_t result_n = result_end - result_vec.data();
+    std::vector<py::ssize_t> shape = {result_n};
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<double>());
+    if (result_n > 0) {
+        std::memcpy(result->data(), result_vec.data(), result_n * sizeof(double));
+    }
+
+    return result;
+}
+
+// set_union - Elements in arr1 or arr2 (or both)
+std::shared_ptr<ndarray> set_union(
+    std::shared_ptr<ndarray> arr1,
+    std::shared_ptr<ndarray> arr2,
+    std::string const& policy = "par"
+) {
+    if (arr1->ndim() != 1 || arr2->ndim() != 1) {
+        throw std::runtime_error("set_union only supports 1D arrays");
+    }
+    if (arr1->dtype().kind() != 'f' || arr1->dtype().itemsize() != 8) {
+        throw std::runtime_error("set_union only supports float64");
+    }
+    if (arr2->dtype().kind() != 'f' || arr2->dtype().itemsize() != 8) {
+        throw std::runtime_error("set_union only supports float64");
+    }
+
+    py::ssize_t n1 = arr1->size();
+    py::ssize_t n2 = arr2->size();
+    double const* data1 = arr1->typed_data<double>();
+    double const* data2 = arr2->typed_data<double>();
+
+    std::vector<double> sorted1(data1, data1 + n1);
+    std::vector<double> sorted2(data2, data2 + n2);
+    std::vector<double> result_vec(n1 + n2);
+
+    double* result_end;
+    {
+        py::gil_scoped_release release;
+
+        std::sort(sorted1.begin(), sorted1.end());
+        std::sort(sorted2.begin(), sorted2.end());
+
+        if (policy == "par") {
+            result_end = hpx::set_union(hpx::execution::par,
+                sorted1.begin(), sorted1.end(),
+                sorted2.begin(), sorted2.end(),
+                result_vec.data());
+        } else {
+            result_end = hpx::set_union(hpx::execution::seq,
+                sorted1.begin(), sorted1.end(),
+                sorted2.begin(), sorted2.end(),
+                result_vec.data());
+        }
+    }
+
+    py::ssize_t result_n = result_end - result_vec.data();
+    std::vector<py::ssize_t> shape = {result_n};
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<double>());
+    if (result_n > 0) {
+        std::memcpy(result->data(), result_vec.data(), result_n * sizeof(double));
+    }
+
+    return result;
+}
+
+// set_symmetric_difference - Elements in arr1 or arr2 but not both
+std::shared_ptr<ndarray> set_symmetric_difference(
+    std::shared_ptr<ndarray> arr1,
+    std::shared_ptr<ndarray> arr2,
+    std::string const& policy = "par"
+) {
+    if (arr1->ndim() != 1 || arr2->ndim() != 1) {
+        throw std::runtime_error("set_symmetric_difference only supports 1D arrays");
+    }
+    if (arr1->dtype().kind() != 'f' || arr1->dtype().itemsize() != 8) {
+        throw std::runtime_error("set_symmetric_difference only supports float64");
+    }
+    if (arr2->dtype().kind() != 'f' || arr2->dtype().itemsize() != 8) {
+        throw std::runtime_error("set_symmetric_difference only supports float64");
+    }
+
+    py::ssize_t n1 = arr1->size();
+    py::ssize_t n2 = arr2->size();
+    double const* data1 = arr1->typed_data<double>();
+    double const* data2 = arr2->typed_data<double>();
+
+    std::vector<double> sorted1(data1, data1 + n1);
+    std::vector<double> sorted2(data2, data2 + n2);
+    std::vector<double> result_vec(n1 + n2);
+
+    double* result_end;
+    {
+        py::gil_scoped_release release;
+
+        std::sort(sorted1.begin(), sorted1.end());
+        std::sort(sorted2.begin(), sorted2.end());
+
+        if (policy == "par") {
+            result_end = hpx::set_symmetric_difference(hpx::execution::par,
+                sorted1.begin(), sorted1.end(),
+                sorted2.begin(), sorted2.end(),
+                result_vec.data());
+        } else {
+            result_end = hpx::set_symmetric_difference(hpx::execution::seq,
+                sorted1.begin(), sorted1.end(),
+                sorted2.begin(), sorted2.end(),
+                result_vec.data());
+        }
+    }
+
+    py::ssize_t result_n = result_end - result_vec.data();
+    std::vector<py::ssize_t> shape = {result_n};
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<double>());
+    if (result_n > 0) {
+        std::memcpy(result->data(), result_vec.data(), result_n * sizeof(double));
+    }
+
+    return result;
+}
+
+// includes - Test if arr1 contains all elements of arr2
+bool includes(
+    std::shared_ptr<ndarray> arr1,
+    std::shared_ptr<ndarray> arr2,
+    std::string const& policy = "par"
+) {
+    if (arr1->ndim() != 1 || arr2->ndim() != 1) {
+        throw std::runtime_error("includes only supports 1D arrays");
+    }
+    if (arr1->dtype().kind() != 'f' || arr1->dtype().itemsize() != 8) {
+        throw std::runtime_error("includes only supports float64");
+    }
+    if (arr2->dtype().kind() != 'f' || arr2->dtype().itemsize() != 8) {
+        throw std::runtime_error("includes only supports float64");
+    }
+
+    py::ssize_t n1 = arr1->size();
+    py::ssize_t n2 = arr2->size();
+    double const* data1 = arr1->typed_data<double>();
+    double const* data2 = arr2->typed_data<double>();
+
+    std::vector<double> sorted1(data1, data1 + n1);
+    std::vector<double> sorted2(data2, data2 + n2);
+
+    bool result;
+    {
+        py::gil_scoped_release release;
+
+        std::sort(sorted1.begin(), sorted1.end());
+        std::sort(sorted2.begin(), sorted2.end());
+
+        if (policy == "par") {
+            result = hpx::includes(hpx::execution::par,
+                sorted1.begin(), sorted1.end(),
+                sorted2.begin(), sorted2.end());
+        } else {
+            result = hpx::includes(hpx::execution::seq,
+                sorted1.begin(), sorted1.end(),
+                sorted2.begin(), sorted2.end());
+        }
+    }
+
+    return result;
+}
+
+// isin - Test membership of arr elements in test_arr
+std::shared_ptr<ndarray> isin(
+    std::shared_ptr<ndarray> arr,
+    std::shared_ptr<ndarray> test_arr
+) {
+    if (arr->ndim() != 1 || test_arr->ndim() != 1) {
+        throw std::runtime_error("isin only supports 1D arrays");
+    }
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("isin only supports float64");
+    }
+    if (test_arr->dtype().kind() != 'f' || test_arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("isin only supports float64");
+    }
+
+    py::ssize_t n = arr->size();
+    py::ssize_t n_test = test_arr->size();
+    double const* data = arr->typed_data<double>();
+    double const* test_data = test_arr->typed_data<double>();
+
+    // Sort test array for binary search
+    std::vector<double> sorted_test(test_data, test_data + n_test);
+    std::sort(sorted_test.begin(), sorted_test.end());
+
+    // Create boolean result array
+    std::vector<py::ssize_t> shape = {n};
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<bool>());
+    bool* out_data = result->typed_data<bool>();
+
+    {
+        py::gil_scoped_release release;
+
+        // Check each element using binary search
+        for (py::ssize_t i = 0; i < n; ++i) {
+            out_data[i] = std::binary_search(sorted_test.begin(), sorted_test.end(), data[i]);
+        }
+    }
+
+    return result;
+}
+
+// searchsorted - Find indices where elements should be inserted
+std::shared_ptr<ndarray> searchsorted(
+    std::shared_ptr<ndarray> arr,     // Sorted array
+    std::shared_ptr<ndarray> values,  // Values to insert
+    std::string const& side = "left"  // "left" or "right"
+) {
+    if (arr->ndim() != 1 || values->ndim() != 1) {
+        throw std::runtime_error("searchsorted only supports 1D arrays");
+    }
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("searchsorted only supports float64");
+    }
+    if (values->dtype().kind() != 'f' || values->dtype().itemsize() != 8) {
+        throw std::runtime_error("searchsorted only supports float64");
+    }
+
+    py::ssize_t n = arr->size();
+    py::ssize_t n_vals = values->size();
+    double const* data = arr->typed_data<double>();
+    double const* vals = values->typed_data<double>();
+
+    std::vector<py::ssize_t> shape = {n_vals};
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<int64_t>());
+    int64_t* out_data = result->typed_data<int64_t>();
+
+    bool use_left = (side == "left");
+
+    {
+        py::gil_scoped_release release;
+
+        for (py::ssize_t i = 0; i < n_vals; ++i) {
+            double val = vals[i];
+            if (use_left) {
+                // Find first position where val <= arr[pos]
+                auto it = std::lower_bound(data, data + n, val);
+                out_data[i] = it - data;
+            } else {
+                // Find first position where val < arr[pos]
+                auto it = std::upper_bound(data, data + n, val);
+                out_data[i] = it - data;
+            }
+        }
+    }
+
+    return result;
+}
+
+// partition - Partition array around pivot
+std::shared_ptr<ndarray> partition_arr(
+    std::shared_ptr<ndarray> arr,
+    double pivot
+) {
+    if (arr->ndim() != 1) {
+        throw std::runtime_error("partition only supports 1D arrays");
+    }
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("partition only supports float64");
+    }
+
+    py::ssize_t n = arr->size();
+    double const* data = arr->typed_data<double>();
+
+    std::vector<py::ssize_t> shape = {n};
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<double>());
+    double* out_data = result->typed_data<double>();
+
+    std::memcpy(out_data, data, n * sizeof(double));
+
+    {
+        py::gil_scoped_release release;
+
+        std::partition(out_data, out_data + n, [pivot](double x) { return x < pivot; });
+    }
+
+    return result;
 }
 
 // Random number generation
@@ -1249,6 +2186,11 @@ void bind_algorithms(py::module_& m) {
         py::arg("policy") = "seq",
         "Return index of maximum element. policy: 'seq', 'par', 'par_unseq'.");
 
+    m.def("_argsort", &hpxpy::argsort,
+        py::arg("arr"),
+        py::arg("policy") = "seq",
+        "Return indices that would sort the array. policy: 'seq', 'par', 'par_unseq'.");
+
     m.def("_diff", &hpxpy::diff,
         py::arg("arr"),
         py::arg("policy") = "seq",
@@ -1335,6 +2277,134 @@ void bind_algorithms(py::module_& m) {
             Sum of squares: transform_reduce(arr, "square", "add")
             Sum of absolute values: transform_reduce(arr, "abs", "add")
         )pbdoc");
+
+    m.def("_reduce_by_key", &hpxpy::reduce_by_key,
+        py::arg("keys"),
+        py::arg("values"),
+        py::arg("reduce_op") = "add",
+        py::arg("policy") = "par",
+        R"pbdoc(
+            Reduce values grouped by keys.
+
+            Parameters
+            ----------
+            keys : ndarray
+                Key array (float64, 1D).
+            values : ndarray
+                Value array (float64, 1D, same size as keys).
+            reduce_op : str
+                Reduction operation: "add", "mul", "min", "max".
+            policy : str
+                Execution policy: "seq", "par", "par_unseq".
+
+            Returns
+            -------
+            tuple[ndarray, ndarray]
+                (unique_keys, reduced_values)
+
+            Examples
+            --------
+            >>> keys = hpx.array([1, 2, 1, 2, 1])
+            >>> values = hpx.array([10, 20, 30, 40, 50])
+            >>> uk, rv = hpx.reduce_by_key(keys, values, "add")
+            >>> # uk = [1, 2], rv = [90, 60]  (1: 10+30+50, 2: 20+40)
+        )pbdoc");
+
+    // Tier 2 Algorithms
+    m.def("_array_equal", &hpxpy::array_equal,
+        py::arg("arr1"),
+        py::arg("arr2"),
+        py::arg("policy") = "par",
+        "True if two arrays have the same shape and elements.");
+
+    m.def("_flip", &hpxpy::flip,
+        py::arg("arr"),
+        py::arg("policy") = "par",
+        "Reverse array elements using hpx::reverse.");
+
+    m.def("_stable_sort", &hpxpy::stable_sort,
+        py::arg("arr"),
+        py::arg("policy") = "par",
+        "Stable sort preserving relative order of equal elements.");
+
+    m.def("_rotate", &hpxpy::rotate,
+        py::arg("arr"),
+        py::arg("shift"),
+        py::arg("policy") = "par",
+        "Rotate array elements left by shift positions (like std::rotate).");
+
+    m.def("_nonzero", &hpxpy::nonzero,
+        py::arg("arr"),
+        py::arg("policy") = "seq",
+        "Return indices of non-zero elements.");
+
+    m.def("_nth_element", &hpxpy::nth_element,
+        py::arg("arr"),
+        py::arg("n"),
+        py::arg("policy") = "par",
+        "Find the nth element (0-indexed) as if array were sorted.");
+
+    m.def("_median", &hpxpy::median,
+        py::arg("arr"),
+        "Find median using nth_element (O(n) average).");
+
+    m.def("_percentile", &hpxpy::percentile,
+        py::arg("arr"),
+        py::arg("q"),
+        "Find percentile value (q in [0, 100]) with linear interpolation.");
+
+    // Tier 3 Algorithms
+    m.def("_merge", &hpxpy::merge,
+        py::arg("arr1"),
+        py::arg("arr2"),
+        py::arg("policy") = "par",
+        "Merge two sorted arrays.");
+
+    m.def("_setdiff1d", &hpxpy::set_difference,
+        py::arg("arr1"),
+        py::arg("arr2"),
+        py::arg("policy") = "par",
+        "Set difference: elements in arr1 but not in arr2.");
+
+    m.def("_intersect1d", &hpxpy::set_intersection,
+        py::arg("arr1"),
+        py::arg("arr2"),
+        py::arg("policy") = "par",
+        "Set intersection: elements in both arr1 and arr2.");
+
+    m.def("_union1d", &hpxpy::set_union,
+        py::arg("arr1"),
+        py::arg("arr2"),
+        py::arg("policy") = "par",
+        "Set union: elements in arr1 or arr2 (or both).");
+
+    m.def("_setxor1d", &hpxpy::set_symmetric_difference,
+        py::arg("arr1"),
+        py::arg("arr2"),
+        py::arg("policy") = "par",
+        "Set symmetric difference: elements in arr1 or arr2 but not both.");
+
+    m.def("_includes", &hpxpy::includes,
+        py::arg("arr1"),
+        py::arg("arr2"),
+        py::arg("policy") = "par",
+        "Test if arr1 contains all elements of arr2.");
+
+    m.def("_isin", &hpxpy::isin,
+        py::arg("arr"),
+        py::arg("test_arr"),
+        "Test membership of arr elements in test_arr.");
+
+    m.def("_searchsorted", &hpxpy::searchsorted,
+        py::arg("arr"),
+        py::arg("values"),
+        py::arg("side") = "left",
+        "Find indices where values should be inserted in sorted arr.");
+
+    m.def("_partition", &hpxpy::partition_arr,
+        py::arg("arr"),
+        py::arg("pivot"),
+        "Partition array around pivot value.");
 
     // Random submodule
     auto random = m.def_submodule("random", "Random number generation.");

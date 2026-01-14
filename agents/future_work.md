@@ -146,31 +146,32 @@ HPX provides 72 parallel algorithms. The following are NOT yet exposed but have 
 - [x] `minmax_element` → `argmin()`, `argmax()` - Find index of min/max
 - [x] `adjacent_difference` → `diff()` - Parallel differences
 - [x] `unique` → `unique()` - Parallel unique elements
-- [ ] `sort_by_key` → Fix `argsort()` - Currently uses NumPy fallback
-- [ ] `reduce` (custom op) → `hpx.reduce(arr, op)` - General reduction with custom binary op
-- [ ] `reduce_deterministic` → `hpx.reduce_deterministic()` - Deterministic FP reduction order
+- [x] `sort_by_key` → `argsort()` - Uses HPX sort with value-based comparator
+- [x] `reduce` (custom op) → `hpx.reduce(arr, op)` - Wraps transform_reduce with identity
+- [x] `reduce_deterministic` → `hpx.reduce_deterministic()` - Sequential reduction for reproducibility
 - [x] `inclusive_scan` → `hpx.inclusive_scan()`, `cumsum` - Running accumulation (expose directly)
 - [x] `exclusive_scan` → `hpx.exclusive_scan()` - Prefix sum excluding current element
 - [x] `transform_reduce` → `hpx.transform_reduce()` - Fused transform+reduce in one pass
-- [ ] `reduce_by_key` → `hpx.reduce_by_key()` - Grouped reductions (enables histogram)
+- [x] `reduce_by_key` → `hpx.reduce_by_key()` - Grouped reductions (enables histogram)
 
 **Tier 2 - Medium Priority:**
-- [ ] `equal` → `array_equal()` - Parallel array comparison
-- [ ] `find` → `nonzero()`, `argwhere()` - Parallel search
-- [ ] `reverse` → `flip()`, `flipud()`, `fliplr()` - Parallel reversal
-- [ ] `rotate` → `roll()` - Parallel rotation
-- [ ] `partial_sort` / `nth_element` → `median()`, `percentile()` - O(n) selection
-- [ ] `stable_sort` → `stable_sort()` - Order-preserving sort
+- [x] `equal` → `array_equal()` - Parallel array comparison using hpx::equal
+- [x] `find` → `nonzero()` - Find non-zero element indices
+- [x] `reverse` → `flip()` - Parallel reversal using hpx::reverse
+- [x] `rotate` → `roll()` - Parallel rotation using hpx::rotate
+- [x] `partial_sort` / `nth_element` → `median()`, `percentile()` - O(n) selection
+- [x] `stable_sort` → `stable_sort()` - Order-preserving sort using hpx::stable_sort
 
 **Tier 3 - Lower Priority:**
-- [ ] `merge` → `concatenate()` (for sorted arrays)
-- [ ] `set_difference` → `setdiff1d()`
-- [ ] `set_intersection` → `intersect1d()`
-- [ ] `set_union` → `union1d()`
-- [ ] `set_symmetric_difference` → `setxor1d()`
-- [ ] `includes` → `isin()`, `in1d()` - Membership testing
-- [ ] `search` → `searchsorted()` - Binary search
-- [ ] `partition` → `partition()` - Parallel partitioning
+- [x] `merge` → `merge_sorted()` - Merge two sorted arrays using hpx::merge
+- [x] `set_difference` → `setdiff1d()` - Set difference using hpx::set_difference
+- [x] `set_intersection` → `intersect1d()` - Set intersection using hpx::set_intersection
+- [x] `set_union` → `union1d()` - Set union using hpx::set_union
+- [x] `set_symmetric_difference` → `setxor1d()` - Symmetric difference
+- [x] `includes` → `includes()` - Test if arr1 contains all elements of arr2
+- [x] `isin` → `isin()` - Membership testing with binary search
+- [x] `search` → `searchsorted()` - Binary search using lower_bound/upper_bound
+- [x] `partition` → `partition()` - Partition array around pivot
 
 ### NumPy Functions Needing HPX Equivalents
 
@@ -199,7 +200,7 @@ HPX provides 72 parallel algorithms. The following are NOT yet exposed but have 
 - [ ] `isin` / `in1d` - Membership test (use HPX find)
 
 ### Known NumPy Fallbacks to Fix
-- [ ] `argsort()` - Currently delegates to numpy (use HPX sort_by_key)
+- [x] `argsort()` - Fixed! Now uses HPX sort with value-based comparator for 1D arrays
 
 ### GPU Transforms
 - Custom CUDA/SYCL kernels for transforms

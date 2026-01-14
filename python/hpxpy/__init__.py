@@ -96,6 +96,39 @@ __all__ = [
     # Scan operations
     "cumsum",
     "cumprod",
+    # HPX algorithm exposures
+    "inclusive_scan",
+    "exclusive_scan",
+    "transform_reduce",
+    "reduce_by_key",
+    "reduce",
+    "reduce_deterministic",
+    # Additional algorithms
+    "any",
+    "all",
+    "argmin",
+    "argmax",
+    "diff",
+    "unique",
+    # Tier 2 algorithms
+    "array_equal",
+    "flip",
+    "stable_sort",
+    "roll",
+    "nonzero",
+    "nth_element",
+    "median",
+    "percentile",
+    # Tier 3 algorithms
+    "merge_sorted",
+    "setdiff1d",
+    "intersect1d",
+    "union1d",
+    "setxor1d",
+    "includes",
+    "isin",
+    "searchsorted",
+    "partition",
     # Element-wise functions
     "maximum",
     "minimum",
@@ -174,11 +207,32 @@ try:
         _all,
         _argmin,
         _argmax,
+        _argsort,
         _diff,
         _unique,
         _inclusive_scan,
         _exclusive_scan,
         _transform_reduce,
+        _reduce_by_key,
+        # Tier 2 algorithms
+        _array_equal,
+        _flip,
+        _stable_sort,
+        _rotate,
+        _nonzero,
+        _nth_element,
+        _median,
+        _percentile,
+        # Tier 3 algorithms
+        _merge,
+        _setdiff1d,
+        _intersect1d,
+        _union1d,
+        _setxor1d,
+        _includes,
+        _isin,
+        _searchsorted,
+        _partition,
         # Math functions
         _sqrt,
         _square,
@@ -1048,7 +1102,7 @@ def sort(arr, axis: int = -1, policy: str = "seq") -> ndarray:
     return _sort(arr, policy)
 
 
-def argsort(arr, axis: int = -1) -> ndarray:
+def argsort(arr, axis: int = -1, policy: str = "seq") -> ndarray:
     """Return indices that would sort an array.
 
     Parameters
@@ -1056,7 +1110,10 @@ def argsort(arr, axis: int = -1) -> ndarray:
     arr : ndarray
         Input array.
     axis : int, default -1
-        Axis along which to sort.
+        Axis along which to sort. Currently only -1 (last axis) is supported for 1D.
+    policy : str, optional
+        Execution policy: "seq" (sequential, default), "par" (parallel),
+        or "par_unseq" (parallel unsequenced).
 
     Returns
     -------
@@ -1064,12 +1121,15 @@ def argsort(arr, axis: int = -1) -> ndarray:
         Array of indices that sort the input.
     """
     _check_available()
-    # Phase 1: delegate to NumPy
-    import numpy as np
+    if arr.ndim != 1:
+        # Multi-dimensional: fall back to NumPy for now
+        import numpy as np
+        np_arr = arr.to_numpy()
+        indices = np.argsort(np_arr, axis=axis)
+        return from_numpy(indices, copy=True)
 
-    np_arr = arr.to_numpy()
-    indices = np.argsort(np_arr, axis=axis)
-    return from_numpy(indices, copy=True)
+    # 1D: use HPX parallel sort
+    return _argsort(arr, policy)
 
 
 def count(arr, value, policy: str = "seq") -> int:
@@ -1329,6 +1389,472 @@ def transform_reduce(arr, transform: str, reduce: str = "add", policy: str = "pa
     """
     _check_available()
     return _transform_reduce(arr, transform, reduce, policy)
+
+
+def reduce_by_key(
+    keys: ndarray,
+    values: ndarray,
+    reduce_op: str = "add",
+    policy: str = "par",
+) -> tuple:
+    """Reduce values grouped by keys.
+
+    Performs a reduction operation on values that share the same key.
+    Returns the unique keys and their corresponding reduced values.
+
+    Parameters
+    ----------
+    keys : ndarray
+        Key array (float64, 1D).
+    values : ndarray
+        Value array (float64, 1D, same size as keys).
+    reduce_op : str, default "add"
+        Reduction operation: "add", "mul", "min", "max".
+    policy : str, default "par"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    tuple[ndarray, ndarray]
+        (unique_keys, reduced_values) where unique_keys are sorted.
+
+    Examples
+    --------
+    >>> keys = hpx.array([1.0, 2.0, 1.0, 2.0, 1.0])
+    >>> values = hpx.array([10.0, 20.0, 30.0, 40.0, 50.0])
+    >>> unique_keys, reduced_values = hpx.reduce_by_key(keys, values, "add")
+    >>> # unique_keys = [1.0, 2.0]
+    >>> # reduced_values = [90.0, 60.0]  (1: 10+30+50=90, 2: 20+40=60)
+    """
+    _check_available()
+    return _reduce_by_key(keys, values, reduce_op, policy)
+
+
+def reduce(arr, op: str = "add", policy: str = "par"):
+    """General reduction with custom binary operation.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array (float64).
+    op : str, default "add"
+        Binary operation: "add", "mul", "min", "max".
+    policy : str, default "par"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    scalar
+        Result of op(op(op(arr[0], arr[1]), arr[2]), ...).
+
+    Examples
+    --------
+    >>> arr = hpx.arange(5)
+    >>> hpx.reduce(arr, "add")  # sum: 0+1+2+3+4=10
+    >>> hpx.reduce(arr, "mul")  # product (NOTE: 0 in array!)
+    >>> hpx.reduce(arr, "max")  # max element
+
+    Note
+    ----
+    This is a convenience wrapper around transform_reduce with identity.
+    """
+    _check_available()
+    return _transform_reduce(arr, "identity", op, policy)
+
+
+def reduce_deterministic(arr, op: str = "add"):
+    """Deterministic reduction with reproducible floating-point results.
+
+    Performs reduction in sequential order to guarantee identical results
+    across different runs. This is slower than parallel reduction but
+    necessary when exact reproducibility is required.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array (float64).
+    op : str, default "add"
+        Binary operation: "add", "mul", "min", "max".
+
+    Returns
+    -------
+    scalar
+        Result of op(op(op(arr[0], arr[1]), arr[2]), ...).
+
+    Examples
+    --------
+    >>> arr = hpx.array([1e20, 1.0, -1e20, 1.0])
+    >>> hpx.reduce(arr, "add", policy="par")  # May give 2.0 or 0.0
+    >>> hpx.reduce_deterministic(arr, "add")  # Always same result
+
+    Note
+    ----
+    Parallel floating-point reductions can produce different results due
+    to non-associativity of floating-point addition. This function uses
+    sequential execution to guarantee reproducibility at the cost of
+    parallelism.
+    """
+    _check_available()
+    return _transform_reduce(arr, "identity", op, "seq")
+
+
+# -----------------------------------------------------------------------------
+# Tier 2 Algorithms
+# -----------------------------------------------------------------------------
+
+
+def array_equal(arr1, arr2, policy: str = "par") -> bool:
+    """True if two arrays have the same shape and elements.
+
+    Parameters
+    ----------
+    arr1, arr2 : ndarray
+        Input arrays to compare (float64).
+    policy : str, default "par"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    bool
+        True if arrays are equal.
+    """
+    _check_available()
+    return _array_equal(arr1, arr2, policy)
+
+
+def flip(arr, policy: str = "par") -> ndarray:
+    """Reverse the order of elements in array.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array (1D float64).
+    policy : str, default "par"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    ndarray
+        Reversed array.
+    """
+    _check_available()
+    return _flip(arr, policy)
+
+
+def stable_sort(arr, policy: str = "par") -> ndarray:
+    """Sort array with stable ordering (preserves relative order of equals).
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array (1D float64).
+    policy : str, default "par"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    ndarray
+        Sorted array.
+    """
+    _check_available()
+    return _stable_sort(arr, policy)
+
+
+def roll(arr, shift: int, policy: str = "par") -> ndarray:
+    """Roll array elements along first axis.
+
+    Elements that roll beyond the end appear at the beginning.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array (1D float64).
+    shift : int
+        Number of positions to roll. Positive shifts left.
+    policy : str, default "par"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    ndarray
+        Rolled array.
+
+    Note
+    ----
+    Uses HPX rotate for parallel rotation.
+    """
+    _check_available()
+    return _rotate(arr, shift, policy)
+
+
+def nonzero(arr) -> ndarray:
+    """Return indices of non-zero elements.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array (1D float64).
+
+    Returns
+    -------
+    ndarray
+        Array of indices where arr is non-zero (int64).
+
+    Note
+    ----
+    Currently sequential to maintain deterministic ordering.
+    """
+    _check_available()
+    return _nonzero(arr, "seq")
+
+
+def nth_element(arr, n: int, policy: str = "par"):
+    """Find the nth element as if array were sorted.
+
+    Uses partial sort (std::nth_element) which is O(n) average.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array (1D float64).
+    n : int
+        Index of element to find (0-indexed, negative indices supported).
+    policy : str, default "par"
+        Execution policy (currently uses std::nth_element).
+
+    Returns
+    -------
+    scalar
+        The nth smallest element.
+    """
+    _check_available()
+    return _nth_element(arr, n, policy)
+
+
+def median(arr):
+    """Compute the median of array elements.
+
+    Uses nth_element for O(n) average complexity.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array (1D float64).
+
+    Returns
+    -------
+    scalar
+        Median value. For even-length arrays, returns average of middle two.
+    """
+    _check_available()
+    return _median(arr)
+
+
+def percentile(arr, q: float):
+    """Compute the q-th percentile of array elements.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array (1D float64).
+    q : float
+        Percentile to compute, in range [0, 100].
+
+    Returns
+    -------
+    scalar
+        Percentile value with linear interpolation (numpy default method).
+
+    Examples
+    --------
+    >>> arr = hpx.arange(100)
+    >>> hpx.percentile(arr, 50)  # Same as median
+    >>> hpx.percentile(arr, 25)  # First quartile
+    >>> hpx.percentile(arr, 75)  # Third quartile
+    """
+    _check_available()
+    return _percentile(arr, q)
+
+
+# -----------------------------------------------------------------------------
+# Tier 3 Algorithms
+# -----------------------------------------------------------------------------
+
+
+def merge_sorted(arr1, arr2, policy: str = "par") -> ndarray:
+    """Merge two sorted arrays into a single sorted array.
+
+    Parameters
+    ----------
+    arr1, arr2 : ndarray
+        Sorted input arrays (1D float64).
+    policy : str, default "par"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    ndarray
+        Merged sorted array.
+    """
+    _check_available()
+    return _merge(arr1, arr2, policy)
+
+
+def setdiff1d(arr1, arr2, policy: str = "par") -> ndarray:
+    """Set difference: elements in arr1 but not in arr2.
+
+    Parameters
+    ----------
+    arr1, arr2 : ndarray
+        Input arrays (1D float64).
+    policy : str, default "par"
+        Execution policy.
+
+    Returns
+    -------
+    ndarray
+        Unique values in arr1 that are not in arr2, sorted.
+    """
+    _check_available()
+    return _setdiff1d(arr1, arr2, policy)
+
+
+def intersect1d(arr1, arr2, policy: str = "par") -> ndarray:
+    """Set intersection: unique elements in both arr1 and arr2.
+
+    Parameters
+    ----------
+    arr1, arr2 : ndarray
+        Input arrays (1D float64).
+    policy : str, default "par"
+        Execution policy.
+
+    Returns
+    -------
+    ndarray
+        Sorted unique values present in both arrays.
+    """
+    _check_available()
+    return _intersect1d(arr1, arr2, policy)
+
+
+def union1d(arr1, arr2, policy: str = "par") -> ndarray:
+    """Set union: unique elements in arr1 or arr2 (or both).
+
+    Parameters
+    ----------
+    arr1, arr2 : ndarray
+        Input arrays (1D float64).
+    policy : str, default "par"
+        Execution policy.
+
+    Returns
+    -------
+    ndarray
+        Sorted unique values from either array.
+    """
+    _check_available()
+    return _union1d(arr1, arr2, policy)
+
+
+def setxor1d(arr1, arr2, policy: str = "par") -> ndarray:
+    """Set symmetric difference: elements in arr1 or arr2 but not both.
+
+    Parameters
+    ----------
+    arr1, arr2 : ndarray
+        Input arrays (1D float64).
+    policy : str, default "par"
+        Execution policy.
+
+    Returns
+    -------
+    ndarray
+        Sorted unique values in exactly one of the arrays.
+    """
+    _check_available()
+    return _setxor1d(arr1, arr2, policy)
+
+
+def includes(arr1, arr2, policy: str = "par") -> bool:
+    """Test if arr1 contains all elements of arr2.
+
+    Parameters
+    ----------
+    arr1, arr2 : ndarray
+        Input arrays (1D float64).
+    policy : str, default "par"
+        Execution policy.
+
+    Returns
+    -------
+    bool
+        True if every element in arr2 is also in arr1.
+    """
+    _check_available()
+    return _includes(arr1, arr2, policy)
+
+
+def isin(arr, test_arr) -> ndarray:
+    """Test membership of arr elements in test_arr.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array to check (1D float64).
+    test_arr : ndarray
+        Values to check against (1D float64).
+
+    Returns
+    -------
+    ndarray
+        Boolean array of same shape as arr, True where element is in test_arr.
+    """
+    _check_available()
+    return _isin(arr, test_arr)
+
+
+def searchsorted(arr, values, side: str = "left") -> ndarray:
+    """Find indices where values should be inserted in sorted arr.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Sorted input array (1D float64).
+    values : ndarray
+        Values to insert (1D float64).
+    side : str, default "left"
+        "left": first suitable position, "right": last suitable position.
+
+    Returns
+    -------
+    ndarray
+        Indices (int64) where values should be inserted.
+    """
+    _check_available()
+    return _searchsorted(arr, values, side)
+
+
+def partition(arr, pivot: float) -> ndarray:
+    """Partition array around a pivot value.
+
+    Rearranges elements so that all elements less than pivot come before
+    elements greater than or equal to pivot.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array (1D float64).
+    pivot : float
+        Pivot value.
+
+    Returns
+    -------
+    ndarray
+        Partitioned array (elements < pivot come first).
+    """
+    _check_available()
+    return _partition(arr, pivot)
 
 
 # -----------------------------------------------------------------------------
