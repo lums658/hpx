@@ -54,7 +54,39 @@ auto dispatch_dtype(ndarray const& arr, Func&& func) {
         py::str(arr.dtype()).cast<std::string>());
 }
 
-// Sum reduction
+// Helper: compute linear index from multi-dimensional indices
+inline py::ssize_t compute_linear_index(
+    std::vector<py::ssize_t> const& indices,
+    std::vector<py::ssize_t> const& strides,
+    py::ssize_t itemsize)
+{
+    py::ssize_t offset = 0;
+    for (size_t i = 0; i < indices.size(); ++i) {
+        offset += indices[i] * strides[i];
+    }
+    return offset / itemsize;  // Convert byte offset to element offset
+}
+
+// Helper: compute output shape after reducing along axis
+inline std::vector<py::ssize_t> compute_reduced_shape(
+    std::vector<py::ssize_t> const& shape,
+    int axis,
+    bool keepdims)
+{
+    std::vector<py::ssize_t> result;
+    for (size_t i = 0; i < shape.size(); ++i) {
+        if (static_cast<int>(i) == axis) {
+            if (keepdims) {
+                result.push_back(1);
+            }
+        } else {
+            result.push_back(shape[i]);
+        }
+    }
+    return result;
+}
+
+// Sum reduction (full array)
 py::object sum(std::shared_ptr<ndarray> arr) {
     if (arr->size() == 0) {
         return py::cast(0.0);
@@ -77,6 +109,164 @@ py::object sum(std::shared_ptr<ndarray> arr) {
         py::gil_scoped_acquire acquire;
         return py::cast(result);
     });
+}
+
+// Sum reduction along axis
+std::shared_ptr<ndarray> sum_axis(std::shared_ptr<ndarray> arr, int axis, bool keepdims) {
+    auto const& shape = arr->shape();
+    int ndim = static_cast<int>(shape.size());
+
+    // Handle negative axis
+    if (axis < 0) {
+        axis += ndim;
+    }
+    if (axis < 0 || axis >= ndim) {
+        throw std::runtime_error("axis " + std::to_string(axis) +
+            " is out of bounds for array of dimension " + std::to_string(ndim));
+    }
+
+    // Compute output shape
+    auto out_shape = compute_reduced_shape(shape, axis, keepdims);
+    auto result = std::make_shared<ndarray>(out_shape, arr->dtype());
+
+    char kind = arr->dtype().kind();
+    auto itemsize = arr->dtype().itemsize();
+    auto const& strides = arr->strides();
+
+    // Compute sizes for iteration
+    py::ssize_t reduce_size = shape[axis];
+    py::ssize_t reduce_stride = strides[axis];
+
+    // Compute number of output elements
+    py::ssize_t out_size = 1;
+    for (auto d : out_shape) out_size *= d;
+
+    if (out_size == 0 || reduce_size == 0) {
+        return result;
+    }
+
+    // Build iteration indices excluding the reduction axis
+    std::vector<py::ssize_t> outer_shape;
+    std::vector<py::ssize_t> outer_strides;
+    for (int i = 0; i < ndim; ++i) {
+        if (i != axis) {
+            outer_shape.push_back(shape[i]);
+            outer_strides.push_back(strides[i]);
+        }
+    }
+
+    py::gil_scoped_release release;
+
+    // Perform reduction based on dtype
+    if (kind == 'f' && itemsize == 8) {
+        double const* src = arr->typed_data<double>();
+        double* dst = result->typed_data<double>();
+
+        hpx::experimental::for_loop(hpx::execution::par, 0, out_size, [&](py::ssize_t out_idx) {
+            // Convert flat output index to multi-dimensional index
+            std::vector<py::ssize_t> outer_indices(outer_shape.size());
+            py::ssize_t remaining = out_idx;
+            for (int i = static_cast<int>(outer_shape.size()) - 1; i >= 0; --i) {
+                outer_indices[i] = remaining % outer_shape[i];
+                remaining /= outer_shape[i];
+            }
+
+            // Compute base offset in source array
+            py::ssize_t base_offset = 0;
+            for (size_t i = 0; i < outer_indices.size(); ++i) {
+                base_offset += outer_indices[i] * outer_strides[i];
+            }
+            base_offset /= itemsize;
+
+            // Sum along the reduction axis
+            double sum = 0.0;
+            py::ssize_t reduce_step = reduce_stride / itemsize;
+            for (py::ssize_t r = 0; r < reduce_size; ++r) {
+                sum += src[base_offset + r * reduce_step];
+            }
+            dst[out_idx] = sum;
+        });
+    } else if (kind == 'f' && itemsize == 4) {
+        float const* src = arr->typed_data<float>();
+        float* dst = result->typed_data<float>();
+
+        hpx::experimental::for_loop(hpx::execution::par, 0, out_size, [&](py::ssize_t out_idx) {
+            std::vector<py::ssize_t> outer_indices(outer_shape.size());
+            py::ssize_t remaining = out_idx;
+            for (int i = static_cast<int>(outer_shape.size()) - 1; i >= 0; --i) {
+                outer_indices[i] = remaining % outer_shape[i];
+                remaining /= outer_shape[i];
+            }
+
+            py::ssize_t base_offset = 0;
+            for (size_t i = 0; i < outer_indices.size(); ++i) {
+                base_offset += outer_indices[i] * outer_strides[i];
+            }
+            base_offset /= itemsize;
+
+            float sum = 0.0f;
+            py::ssize_t reduce_step = reduce_stride / itemsize;
+            for (py::ssize_t r = 0; r < reduce_size; ++r) {
+                sum += src[base_offset + r * reduce_step];
+            }
+            dst[out_idx] = sum;
+        });
+    } else if (kind == 'i' && itemsize == 8) {
+        int64_t const* src = arr->typed_data<int64_t>();
+        int64_t* dst = result->typed_data<int64_t>();
+
+        hpx::experimental::for_loop(hpx::execution::par, 0, out_size, [&](py::ssize_t out_idx) {
+            std::vector<py::ssize_t> outer_indices(outer_shape.size());
+            py::ssize_t remaining = out_idx;
+            for (int i = static_cast<int>(outer_shape.size()) - 1; i >= 0; --i) {
+                outer_indices[i] = remaining % outer_shape[i];
+                remaining /= outer_shape[i];
+            }
+
+            py::ssize_t base_offset = 0;
+            for (size_t i = 0; i < outer_indices.size(); ++i) {
+                base_offset += outer_indices[i] * outer_strides[i];
+            }
+            base_offset /= itemsize;
+
+            int64_t sum = 0;
+            py::ssize_t reduce_step = reduce_stride / itemsize;
+            for (py::ssize_t r = 0; r < reduce_size; ++r) {
+                sum += src[base_offset + r * reduce_step];
+            }
+            dst[out_idx] = sum;
+        });
+    } else if (kind == 'i' && itemsize == 4) {
+        int32_t const* src = arr->typed_data<int32_t>();
+        int32_t* dst = result->typed_data<int32_t>();
+
+        hpx::experimental::for_loop(hpx::execution::par, 0, out_size, [&](py::ssize_t out_idx) {
+            std::vector<py::ssize_t> outer_indices(outer_shape.size());
+            py::ssize_t remaining = out_idx;
+            for (int i = static_cast<int>(outer_shape.size()) - 1; i >= 0; --i) {
+                outer_indices[i] = remaining % outer_shape[i];
+                remaining /= outer_shape[i];
+            }
+
+            py::ssize_t base_offset = 0;
+            for (size_t i = 0; i < outer_indices.size(); ++i) {
+                base_offset += outer_indices[i] * outer_strides[i];
+            }
+            base_offset /= itemsize;
+
+            int32_t sum = 0;
+            py::ssize_t reduce_step = reduce_stride / itemsize;
+            for (py::ssize_t r = 0; r < reduce_size; ++r) {
+                sum += src[base_offset + r * reduce_step];
+            }
+            dst[out_idx] = sum;
+        });
+    } else {
+        py::gil_scoped_acquire acquire;
+        throw std::runtime_error("Unsupported dtype for sum_axis");
+    }
+
+    return result;
 }
 
 // Product reduction
@@ -565,6 +755,28 @@ void bind_algorithms(py::module_& m) {
             -------
             scalar
                 Sum of all elements.
+        )pbdoc");
+
+    m.def("_sum_axis", &hpxpy::sum_axis,
+        py::arg("arr"),
+        py::arg("axis"),
+        py::arg("keepdims") = false,
+        R"pbdoc(
+            Sum of array elements along an axis.
+
+            Parameters
+            ----------
+            arr : ndarray
+                Input array.
+            axis : int
+                Axis along which to sum.
+            keepdims : bool
+                If True, retain reduced dimensions with size 1.
+
+            Returns
+            -------
+            ndarray
+                Sum along the specified axis.
         )pbdoc");
 
     m.def("_prod", &hpxpy::prod,

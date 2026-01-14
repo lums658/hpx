@@ -163,6 +163,7 @@ try:
         _array_from_numpy,
         # Algorithms
         _sum,
+        _sum_axis,
         _prod,
         _min,
         _max,
@@ -800,18 +801,24 @@ def sum(arr, axis=None, dtype=None, keepdims: bool = False):
         Sum of elements.
     """
     _check_available()
-    if axis is None and not keepdims and dtype is None:
-        # Full reduction: use parallel HPX implementation
+    if axis is None:
+        if keepdims:
+            # Full reduction with keepdims: reduce all, then reshape
+            import numpy as np
+            result = _sum(arr)
+            shape = tuple(1 for _ in arr.shape)
+            return from_numpy(np.array(result, dtype=arr.dtype).reshape(shape))
         return _sum(arr)
+    elif isinstance(axis, int):
+        # Single axis reduction: use native HPX implementation
+        return _sum_axis(arr, axis, keepdims)
     else:
-        # Axis reduction: use NumPy (HPX axis reduction not yet implemented)
-        import numpy as np
-        np_arr = arr.to_numpy() if hasattr(arr, 'to_numpy') else np.asarray(arr)
-        result = np.sum(np_arr, axis=axis, dtype=dtype, keepdims=keepdims)
-        # Return scalar for full reduction, HPXPy array for partial reduction
-        if result.ndim == 0:
-            return float(result)
-        return array(result)
+        # Multiple axes: reduce one at a time
+        result = arr
+        # Sort axes in descending order to maintain valid indices
+        for ax in sorted(axis, reverse=True):
+            result = _sum_axis(result, ax, keepdims)
+        return result
 
 
 def prod(arr, axis=None, dtype=None, keepdims: bool = False):
@@ -834,17 +841,11 @@ def prod(arr, axis=None, dtype=None, keepdims: bool = False):
         Product of elements.
     """
     _check_available()
-    if axis is None and not keepdims and dtype is None:
-        # Full reduction: use parallel HPX implementation
-        return _prod(arr)
-    else:
-        # Axis reduction: use NumPy
-        import numpy as np
-        np_arr = arr.to_numpy() if hasattr(arr, 'to_numpy') else np.asarray(arr)
-        result = np.prod(np_arr, axis=axis, dtype=dtype, keepdims=keepdims)
-        if result.ndim == 0:
-            return float(result)
-        return array(result)
+    if axis is not None:
+        raise NotImplementedError("axis parameter for prod() not yet implemented")
+    if keepdims:
+        raise NotImplementedError("keepdims parameter for prod() not yet implemented")
+    return _prod(arr)
 
 
 def min(arr, axis=None, keepdims: bool = False):
@@ -865,17 +866,11 @@ def min(arr, axis=None, keepdims: bool = False):
         Minimum value.
     """
     _check_available()
-    if axis is None and not keepdims:
-        # Full reduction: use parallel HPX implementation
-        return _min(arr)
-    else:
-        # Axis reduction: use NumPy
-        import numpy as np
-        np_arr = arr.to_numpy() if hasattr(arr, 'to_numpy') else np.asarray(arr)
-        result = np.min(np_arr, axis=axis, keepdims=keepdims)
-        if result.ndim == 0:
-            return float(result)
-        return array(result)
+    if axis is not None:
+        raise NotImplementedError("axis parameter for min() not yet implemented")
+    if keepdims:
+        raise NotImplementedError("keepdims parameter for min() not yet implemented")
+    return _min(arr)
 
 
 def max(arr, axis=None, keepdims: bool = False):
@@ -896,17 +891,11 @@ def max(arr, axis=None, keepdims: bool = False):
         Maximum value.
     """
     _check_available()
-    if axis is None and not keepdims:
-        # Full reduction: use parallel HPX implementation
-        return _max(arr)
-    else:
-        # Axis reduction: use NumPy
-        import numpy as np
-        np_arr = arr.to_numpy() if hasattr(arr, 'to_numpy') else np.asarray(arr)
-        result = np.max(np_arr, axis=axis, keepdims=keepdims)
-        if result.ndim == 0:
-            return float(result)
-        return array(result)
+    if axis is not None:
+        raise NotImplementedError("axis parameter for max() not yet implemented")
+    if keepdims:
+        raise NotImplementedError("keepdims parameter for max() not yet implemented")
+    return _max(arr)
 
 
 def mean(arr, axis=None, dtype=None, keepdims: bool = False):
