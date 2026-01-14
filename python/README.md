@@ -151,24 +151,47 @@ cmake .. -DHPXPY_WITH_SYCL=ON -DHPX_DIR=../../build/lib/cmake/HPX
 
 ## Tutorials
 
-The `tutorials/` directory contains Jupyter notebooks demonstrating HPXPy features:
+The `tutorials/` directory contains Jupyter notebooks demonstrating HPXPy features, organized by implementation phase:
 
-| Tutorial | Description |
-|----------|-------------|
-| 01_getting_started | Basic HPX runtime and array operations |
-| 02_parallel_algorithms | Parallel math, sorting, and random numbers |
-| 03_distributed_computing | Distributed arrays and collective operations |
-| 05_gpu_acceleration | CUDA/SYCL GPU support |
-| 06_array_operations | Slicing, reshaping, and indexing |
-| 07_benchmarks | Performance comparisons |
-| 08_monte_carlo | Monte Carlo Pi estimation |
-| 09_black_scholes | Options pricing simulation |
-| 10_image_processing | Image statistics with HPXPy |
+| Tutorial | Phase | Topics |
+|----------|-------|--------|
+| 01_getting_started | 1-3 | Runtime, arrays, operators |
+| 03_math_and_algorithms | 4-5 | Math functions, sorting, scans, random |
+| 04_slicing | 6 | Array slicing with start:stop:step |
+| 05_reshape | 7 | Reshape, flatten, ravel, transpose |
+| 06_gpu_acceleration | 8 | CUDA and SYCL GPU support |
+| 07_distributed_computing | 9 | Collectives, distributed arrays |
+| 08_benchmarks | - | Performance comparisons |
 
 To run tutorials:
 ```bash
 source build/setup_env.sh
-jupyter notebook tutorials/
+jupyter lab tutorials/
+```
+
+## Examples
+
+The `examples/` directory contains application notebooks demonstrating real-world use cases:
+
+| Example | Description |
+|---------|-------------|
+| monte_carlo | Monte Carlo methods (moved from tutorials) |
+| black_scholes | Options pricing simulation |
+| image_processing | Image statistics with HPXPy |
+| monte_carlo_pi | Classic Pi estimation |
+| heat_diffusion | 1D heat equation simulation |
+| kmeans_clustering | K-Means clustering with HPXPy |
+| parallel_integration | Numerical integration benchmark |
+| distributed_analytics | IoT sensor network analytics |
+| distributed_reduction | SPMD pattern demonstration |
+| distribution_demo | Distribution policies |
+| multi_locality | Multi-process execution |
+| scalability | Scalability benchmarks |
+
+To run examples:
+```bash
+source build/setup_env.sh
+jupyter lab examples/
 ```
 
 ## Running Tests

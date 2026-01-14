@@ -40,15 +40,20 @@ hpx/
 
 Each implementation phase gets its own branch:
 
-| Phase | Branch Name | Description |
-|-------|-------------|-------------|
-| 1 | `hpxpy/phase1-foundation` | Runtime, basic arrays, sequential algorithms |
-| 2 | `hpxpy/phase2-parallel` | Parallel execution policies, threading |
-| 3 | `hpxpy/phase3-distributed` | Multi-locality, collectives, partitioned vectors |
-| 4 | `hpxpy/phase4-numpy-compat` | Full NumPy API compatibility |
-| 5 | `hpxpy/phase5-gpu` | CUDA/SYCL GPU support |
-| 5.5 | `hpxpy/phase5.5-docs` | Sphinx documentation site |
-| 6 | `hpxpy/phase6-advanced` | Optimizations, ecosystem integration |
+| Phase | Branch Name | Status | Description |
+|-------|-------------|--------|-------------|
+| 1 | `hpxpy/phase1-foundation` | COMPLETE | Runtime, basic arrays, sequential algorithms |
+| 2 | `hpxpy/phase2-parallel` | COMPLETE | Parallel execution policies, threading |
+| 3 | `hpxpy/phase3-distributed` | COMPLETE | Multi-locality, collectives |
+| 4 | `hpxpy/phase4-numpy-compat` | COMPLETE | Operators, math functions |
+| 5 | `hpxpy/phase5-gpu` | COMPLETE | CUDA/SYCL GPU support |
+| 5.5 | `hpxpy/phase5.5-docs` | COMPLETE | Sphinx documentation site |
+| 6 | `hpxpy/phase6-slicing` | COMPLETE | Array slicing |
+| 7 | `hpxpy/phase7-indexing` | COMPLETE | Integer indexing and assignment |
+| 8 | `hpxpy/phase8-multidim` | COMPLETE | Multi-dimensional slicing |
+| 9 | `hpxpy/phase9-broadcasting` | COMPLETE | NumPy broadcasting |
+| 10 | `hpxpy/phase10-gpu-native` | COMPLETE | GPU-native kernels (Thrust/SYCL) |
+| 11 | `hpxpy/phase11-partitioned` | COMPLETE | True distribution (partitioned_vector) |
 
 ### Branch Workflow
 
@@ -198,54 +203,68 @@ List of test files/functions added in this phase.
 
 ## Implementation Phases Overview
 
-### Phase 1: Foundation
+### Phase 1: Foundation (COMPLETE)
 - HPX runtime initialization/finalization from Python
 - Basic `hpx.array` wrapping NumPy arrays
 - Sequential algorithm bindings (sum, min, max, sort)
 - Build system setup (CMake + pybind11)
 
-### Phase 2: Parallel Algorithms
+### Phase 2: Parallel Algorithms (COMPLETE)
 - Execution policies (`seq`, `par`, `par_unseq`)
 - GIL release during parallel operations
 - Full parallel algorithm suite
 - Thread pool configuration
 
-### Phase 3: Distributed Computing
+### Phase 3: Distributed Computing (COMPLETE)
 - Multi-locality support
-- `partitioned_vector` bindings
 - Collective operations (all_reduce, broadcast, gather, scatter)
 - Distribution policies (block, cyclic)
 
-### Phase 4: NumPy Compatibility
-- Full NumPy Array API compliance
+### Phase 4: NumPy Compatibility (COMPLETE)
 - Operator overloading (`+`, `-`, `*`, `/`, etc.)
-- Broadcasting support
-- Slicing and indexing
-- Type promotion rules
+- Comparison operators (`<`, `>`, `==`, etc.)
+- Math functions (sin, cos, exp, log, sqrt, etc.)
+- Random number generation
 
-### Phase 5: GPU Support
+### Phase 5: GPU Support (COMPLETE)
 - CUDA executor bindings via `hpx::cuda::experimental::cuda_executor`
 - SYCL executor bindings via `hpx::sycl::experimental::sycl_executor`
 - GPU array creation and transfers
 - Async GPU operations with HPX futures
 - Transparent device selection (`device='auto'`, `'gpu'`, `'sycl'`, `'cpu'`)
-- Cross-platform GPU support (NVIDIA, Intel, AMD, Apple Silicon)
 
-### Phase 5.5: Documentation
+### Phase 5.5: Documentation (COMPLETE)
 - Sphinx documentation with PyData theme
 - API reference auto-generated from docstrings
 - Tutorial notebooks rendered inline
 - User guide with deep-dive content
-- Getting started and installation guides
-- Read the Docs hosting configuration
-- See [docs_spec.md](phases/phase5.5/docs_spec.md) and [docs_instructions.md](phases/phase5.5/docs_instructions.md)
 
-### Phase 6: Advanced Features
-- Performance optimizations
-- GPU-native reductions (thrust, SYCL parallel STL)
-- Linear algebra (cuBLAS integration)
-- Ecosystem interoperability (Dask, CuPy)
-- Multi-GPU distribution
+### Phase 6: Array Slicing (COMPLETE)
+- `arr[start:stop:step]` slice syntax
+- Negative indices support
+- Step slicing
+
+### Phase 7: Indexing & Assignment (COMPLETE)
+- Integer indexing (`arr[5]`, `arr[-1]`)
+- `__setitem__` assignment (`arr[0] = 42`, `arr[1:4] = value`)
+
+### Phase 8: Multi-dimensional Slicing (COMPLETE)
+- `arr[1:3, 2:5]` multi-axis slicing
+- Mixed integer/slice indices
+
+### Phase 9: Broadcasting (COMPLETE)
+- NumPy-compatible broadcasting for binary operations
+- Shape compatibility checking
+- Native axis-based reduction (`sum(axis=N)`)
+
+### Phase 10: GPU-Native Kernels (COMPLETE)
+- Thrust-based CUDA reductions
+- SYCL-native reductions
+
+### Phase 11: True Distribution (COMPLETE)
+- `PartitionedArray` using HPX `partitioned_vector<double>`
+- Distributed algorithms (segmented reduce)
+- Auto-distribution across localities
 
 ## Development Guidelines
 
