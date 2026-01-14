@@ -94,6 +94,62 @@ Deferred features and enhancements for future phases.
 
 ## Future Enhancements (Deferred)
 
+### HPX Algorithms to Expose in Python
+
+HPX provides 72 parallel algorithms. The following are NOT yet exposed but have high value:
+
+**Tier 1 - High Priority:**
+- [ ] `all_any_none` → `any()`, `all()` - Parallel boolean reductions
+- [ ] `minmax_element` → `argmin()`, `argmax()` - Find index of min/max
+- [ ] `adjacent_difference` → `diff()` - Parallel differences
+- [ ] `unique` → `unique()` - Parallel unique elements
+- [ ] `sort_by_key` → Fix `argsort()` - Currently uses NumPy fallback
+
+**Tier 2 - Medium Priority:**
+- [ ] `equal` → `array_equal()` - Parallel array comparison
+- [ ] `find` → `nonzero()`, `argwhere()` - Parallel search
+- [ ] `reverse` → `flip()`, `flipud()`, `fliplr()` - Parallel reversal
+- [ ] `rotate` → `roll()` - Parallel rotation
+- [ ] `partial_sort` / `nth_element` → `median()`, `percentile()` - O(n) selection
+- [ ] `stable_sort` → `stable_sort()` - Order-preserving sort
+
+**Tier 3 - Lower Priority:**
+- [ ] `merge` → `concatenate()` (for sorted arrays)
+- [ ] `set_difference` → `setdiff1d()`
+- [ ] `set_intersection` → `intersect1d()`
+- [ ] `set_union` → `union1d()`
+- [ ] `set_symmetric_difference` → `setxor1d()`
+- [ ] `includes` → `isin()`, `in1d()` - Membership testing
+- [ ] `search` → `searchsorted()` - Binary search
+- [ ] `partition` → `partition()` - Parallel partitioning
+
+### NumPy Functions Needing HPX Equivalents
+
+**Tier 1 - Very High Parallel Benefit:**
+- [ ] `dot` / `matmul` - Matrix multiplication (massive parallel benefit)
+- [ ] `any` / `all` - Boolean reductions (use HPX all_any_none)
+- [ ] `argmin` / `argmax` - Index of extrema (use HPX minmax_element)
+- [ ] `diff` - Differences (use HPX adjacent_difference)
+- [ ] `unique` - Unique elements (use HPX unique)
+
+**Tier 2 - Good Parallel Benefit:**
+- [ ] `median` - Median value (use HPX nth_element)
+- [ ] `percentile` / `quantile` - Percentiles (use HPX partial_sort)
+- [ ] `histogram` - Histogram bins (use HPX reduce_by_key)
+- [ ] `searchsorted` - Binary search (use HPX search)
+- [ ] `gradient` - Numerical gradient (use HPX adjacent_difference)
+- [ ] `convolve` - Convolution (use HPX transform + custom)
+
+**Tier 3 - Moderate Parallel Benefit:**
+- [ ] `flip` / `flipud` / `fliplr` - Reverse array (use HPX reverse)
+- [ ] `roll` - Shift elements (use HPX rotate)
+- [ ] `tile` / `repeat` - Repeat array (use HPX transform)
+- [ ] `intersect1d` / `union1d` - Set operations (use HPX set_*)
+- [ ] `isin` / `in1d` - Membership test (use HPX find)
+
+### Known NumPy Fallbacks to Fix
+- [ ] `argsort()` - Currently delegates to numpy (use HPX sort_by_key)
+
 ### GPU Transforms
 - Custom CUDA/SYCL kernels for transforms
 - Multi-GPU support with HPX distribution

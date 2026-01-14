@@ -940,7 +940,7 @@ def mean(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq"
     return _sum(arr, policy) / arr.size
 
 
-def std(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False):
+def std(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False, policy: str = "seq"):
     """Compute the standard deviation.
 
     Parameters
@@ -955,6 +955,9 @@ def std(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False):
         Delta degrees of freedom.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
+    policy : str, default "seq"
+        Execution policy: "seq" (sequential), "par" (parallel),
+        or "par_unseq" (parallel + SIMD).
 
     Returns
     -------
@@ -964,10 +967,10 @@ def std(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False):
     _check_available()
     if axis is not None:
         raise NotImplementedError("axis parameter not yet supported in Phase 1")
-    return var(arr, ddof=ddof) ** 0.5
+    return var(arr, ddof=ddof, policy=policy) ** 0.5
 
 
-def var(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False):
+def var(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False, policy: str = "seq"):
     """Compute the variance.
 
     Parameters
@@ -982,6 +985,9 @@ def var(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False):
         Delta degrees of freedom.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
+    policy : str, default "seq"
+        Execution policy: "seq" (sequential), "par" (parallel),
+        or "par_unseq" (parallel + SIMD).
 
     Returns
     -------
@@ -991,14 +997,15 @@ def var(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False):
     _check_available()
     if axis is not None:
         raise NotImplementedError("axis parameter not yet supported in Phase 1")
-    # Compute variance using E[X^2] - E[X]^2
-    # Note: This is a simple implementation; Phase 2 will use proper parallel algorithm
+    # Compute variance using pure HPX operations
+    # Uses two-pass algorithm for numerical stability: Var(X) = E[(X - mean)^2]
     n = arr.size
-    mean_val = _sum(arr) / n
-    # For now, convert to numpy for the squared sum
-    np_arr = arr.to_numpy()
-    sum_sq = float((np_arr**2).sum())
-    return sum_sq / (n - ddof) - (mean_val**2) * n / (n - ddof)
+    mean_val = _sum(arr, policy) / n
+    # Element-wise operations use parallel execution automatically
+    diff = arr - mean_val        # HPX parallel element-wise subtract
+    squared = diff * diff        # HPX parallel element-wise multiply
+    sum_sq = _sum(squared, policy)  # HPX reduction with specified policy
+    return sum_sq / (n - ddof)
 
 
 # -----------------------------------------------------------------------------

@@ -69,8 +69,6 @@ class NumpyFallbackDetector:
 
     # Known fallbacks from code analysis
     KNOWN_FALLBACKS = {
-        'var': 'Converts to numpy for squared sum (__init__.py:977-984)',
-        'std': 'Calls var() which uses numpy (__init__.py:950)',
         'argsort': 'Explicitly delegates to numpy (__init__.py:1030-1035)',
     }
 
