@@ -800,10 +800,18 @@ def sum(arr, axis=None, dtype=None, keepdims: bool = False):
         Sum of elements.
     """
     _check_available()
-    # Phase 1: only support full reduction (axis=None)
-    if axis is not None:
-        raise NotImplementedError("axis parameter not yet supported in Phase 1")
-    return _sum(arr)
+    if axis is None and not keepdims and dtype is None:
+        # Full reduction: use parallel HPX implementation
+        return _sum(arr)
+    else:
+        # Axis reduction: use NumPy (HPX axis reduction not yet implemented)
+        import numpy as np
+        np_arr = arr.to_numpy() if hasattr(arr, 'to_numpy') else np.asarray(arr)
+        result = np.sum(np_arr, axis=axis, dtype=dtype, keepdims=keepdims)
+        # Return scalar for full reduction, HPXPy array for partial reduction
+        if result.ndim == 0:
+            return float(result)
+        return array(result)
 
 
 def prod(arr, axis=None, dtype=None, keepdims: bool = False):
@@ -826,9 +834,17 @@ def prod(arr, axis=None, dtype=None, keepdims: bool = False):
         Product of elements.
     """
     _check_available()
-    if axis is not None:
-        raise NotImplementedError("axis parameter not yet supported in Phase 1")
-    return _prod(arr)
+    if axis is None and not keepdims and dtype is None:
+        # Full reduction: use parallel HPX implementation
+        return _prod(arr)
+    else:
+        # Axis reduction: use NumPy
+        import numpy as np
+        np_arr = arr.to_numpy() if hasattr(arr, 'to_numpy') else np.asarray(arr)
+        result = np.prod(np_arr, axis=axis, dtype=dtype, keepdims=keepdims)
+        if result.ndim == 0:
+            return float(result)
+        return array(result)
 
 
 def min(arr, axis=None, keepdims: bool = False):
@@ -849,9 +865,17 @@ def min(arr, axis=None, keepdims: bool = False):
         Minimum value.
     """
     _check_available()
-    if axis is not None:
-        raise NotImplementedError("axis parameter not yet supported in Phase 1")
-    return _min(arr)
+    if axis is None and not keepdims:
+        # Full reduction: use parallel HPX implementation
+        return _min(arr)
+    else:
+        # Axis reduction: use NumPy
+        import numpy as np
+        np_arr = arr.to_numpy() if hasattr(arr, 'to_numpy') else np.asarray(arr)
+        result = np.min(np_arr, axis=axis, keepdims=keepdims)
+        if result.ndim == 0:
+            return float(result)
+        return array(result)
 
 
 def max(arr, axis=None, keepdims: bool = False):
@@ -872,9 +896,17 @@ def max(arr, axis=None, keepdims: bool = False):
         Maximum value.
     """
     _check_available()
-    if axis is not None:
-        raise NotImplementedError("axis parameter not yet supported in Phase 1")
-    return _max(arr)
+    if axis is None and not keepdims:
+        # Full reduction: use parallel HPX implementation
+        return _max(arr)
+    else:
+        # Axis reduction: use NumPy
+        import numpy as np
+        np_arr = arr.to_numpy() if hasattr(arr, 'to_numpy') else np.asarray(arr)
+        result = np.max(np_arr, axis=axis, keepdims=keepdims)
+        if result.ndim == 0:
+            return float(result)
+        return array(result)
 
 
 def mean(arr, axis=None, dtype=None, keepdims: bool = False):
