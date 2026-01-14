@@ -110,17 +110,19 @@ py::object sum(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") 
         return py::cast(0.0);
     }
 
-    // Release GIL during computation
-    py::gil_scoped_release release;
-
+    // dispatch_dtype needs GIL to access arr->dtype()
     return dispatch_dtype(*arr, [&policy](auto const* data, py::ssize_t size) -> py::object {
         using T = std::remove_const_t<std::remove_pointer_t<decltype(data)>>;
 
-        T result = with_execution_policy(policy, [&](auto exec) {
-            return hpx::reduce(exec, data, data + size, T{0});
-        });
+        // Release GIL during HPX computation
+        T result;
+        {
+            py::gil_scoped_release release;
+            result = with_execution_policy(policy, [&](auto exec) {
+                return hpx::reduce(exec, data, data + size, T{0});
+            });
+        }
 
-        py::gil_scoped_acquire acquire;
         return py::cast(result);
     });
 }
@@ -290,16 +292,19 @@ py::object prod(std::shared_ptr<ndarray> arr, std::string const& policy = "seq")
         return py::cast(1.0);
     }
 
-    py::gil_scoped_release release;
-
+    // dispatch_dtype needs GIL to access arr->dtype()
     return dispatch_dtype(*arr, [&policy](auto const* data, py::ssize_t size) -> py::object {
         using T = std::remove_const_t<std::remove_pointer_t<decltype(data)>>;
 
-        T result = with_execution_policy(policy, [&](auto exec) {
-            return hpx::reduce(exec, data, data + size, T{1}, std::multiplies<T>{});
-        });
+        // Release GIL during HPX computation
+        T result;
+        {
+            py::gil_scoped_release release;
+            result = with_execution_policy(policy, [&](auto exec) {
+                return hpx::reduce(exec, data, data + size, T{1}, std::multiplies<T>{});
+            });
+        }
 
-        py::gil_scoped_acquire acquire;
         return py::cast(result);
     });
 }
@@ -311,16 +316,19 @@ py::object min(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") 
         throw std::runtime_error("min() arg is an empty sequence");
     }
 
-    py::gil_scoped_release release;
-
+    // dispatch_dtype needs GIL to access arr->dtype()
     return dispatch_dtype(*arr, [&policy](auto const* data, py::ssize_t size) -> py::object {
         using T = std::remove_const_t<std::remove_pointer_t<decltype(data)>>;
 
-        auto result = with_execution_policy(policy, [&](auto exec) {
-            return hpx::min_element(exec, data, data + size);
-        });
+        // Release GIL during HPX computation
+        T const* result;
+        {
+            py::gil_scoped_release release;
+            result = with_execution_policy(policy, [&](auto exec) {
+                return hpx::min_element(exec, data, data + size);
+            });
+        }
 
-        py::gil_scoped_acquire acquire;
         return py::cast(*result);
     });
 }
@@ -332,16 +340,19 @@ py::object max(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") 
         throw std::runtime_error("max() arg is an empty sequence");
     }
 
-    py::gil_scoped_release release;
-
+    // dispatch_dtype needs GIL to access arr->dtype()
     return dispatch_dtype(*arr, [&policy](auto const* data, py::ssize_t size) -> py::object {
         using T = std::remove_const_t<std::remove_pointer_t<decltype(data)>>;
 
-        auto result = with_execution_policy(policy, [&](auto exec) {
-            return hpx::max_element(exec, data, data + size);
-        });
+        // Release GIL during HPX computation
+        T const* result;
+        {
+            py::gil_scoped_release release;
+            result = with_execution_policy(policy, [&](auto exec) {
+                return hpx::max_element(exec, data, data + size);
+            });
+        }
 
-        py::gil_scoped_acquire acquire;
         return py::cast(*result);
     });
 }
@@ -357,14 +368,16 @@ std::shared_ptr<ndarray> sort(std::shared_ptr<ndarray> arr, std::string const& p
     auto result = std::make_shared<ndarray>(arr->shape(), arr->dtype());
     std::memcpy(result->data(), arr->data(), arr->nbytes());
 
+    // Cache dtype info before releasing GIL
+    char kind = arr->dtype().kind();
+    auto itemsize = arr->dtype().itemsize();
+    py::ssize_t size = arr->size();
+
     // Release GIL during sort
     py::gil_scoped_release release;
 
-    char kind = arr->dtype().kind();
-    auto itemsize = arr->dtype().itemsize();
-
     // Helper to sort with execution policy
-    auto do_sort = [&policy, size = arr->size()](auto* ptr) {
+    auto do_sort = [&policy, size](auto* ptr) {
         with_execution_policy(policy, [&](auto exec) {
             hpx::sort(exec, ptr, ptr + size);
             return 0;  // Dummy return for with_execution_policy
@@ -603,6 +616,351 @@ std::shared_ptr<ndarray> cumprod(std::shared_ptr<ndarray> arr) {
     }
 
     return result;
+}
+
+// =============================================================================
+// New HPX Algorithm Exposures
+// Simplified implementations for float64 only to avoid compiler issues
+// =============================================================================
+
+// Note: hpx::any_of and hpx::all_of directly crash Apple clang 17.0.0,
+// so we use hpx::count_if as a workaround which provides equivalent functionality.
+
+// any_of - Check if any element is truthy (non-zero)
+// Implemented using hpx::count to avoid compiler crash with hpx::any_of
+bool any_of(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("any currently only supports float64");
+    }
+    double const* data = arr->typed_data<double>();
+    py::ssize_t size = arr->size();
+
+    py::gil_scoped_release release;
+    // Count non-zero elements - any() is true if count > 0
+    std::ptrdiff_t count;
+    if (policy == "par") {
+        count = hpx::count_if(hpx::execution::par, data, data + size,
+            [](double val) { return val != 0.0; });
+    } else if (policy == "par_unseq") {
+        count = hpx::count_if(hpx::execution::par_unseq, data, data + size,
+            [](double val) { return val != 0.0; });
+    } else {
+        count = hpx::count_if(hpx::execution::seq, data, data + size,
+            [](double val) { return val != 0.0; });
+    }
+    return count > 0;
+}
+
+// all_of - Check if all elements are truthy (non-zero)
+// Implemented using hpx::count to avoid compiler crash with hpx::all_of
+bool all_of(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("all currently only supports float64");
+    }
+    double const* data = arr->typed_data<double>();
+    py::ssize_t size = arr->size();
+
+    py::gil_scoped_release release;
+    // Count zero elements - all() is true if count == 0
+    std::ptrdiff_t count;
+    if (policy == "par") {
+        count = hpx::count_if(hpx::execution::par, data, data + size,
+            [](double val) { return val == 0.0; });
+    } else if (policy == "par_unseq") {
+        count = hpx::count_if(hpx::execution::par_unseq, data, data + size,
+            [](double val) { return val == 0.0; });
+    } else {
+        count = hpx::count_if(hpx::execution::seq, data, data + size,
+            [](double val) { return val == 0.0; });
+    }
+    return count == 0;
+}
+
+// argmin - Return index of minimum element
+py::ssize_t argmin(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("argmin currently only supports float64");
+    }
+    double const* data = arr->typed_data<double>();
+    py::ssize_t size = arr->size();
+
+    py::gil_scoped_release release;
+    double const* result;
+    if (policy == "par") {
+        result = hpx::min_element(hpx::execution::par, data, data + size);
+    } else if (policy == "par_unseq") {
+        result = hpx::min_element(hpx::execution::par_unseq, data, data + size);
+    } else {
+        result = hpx::min_element(hpx::execution::seq, data, data + size);
+    }
+    return static_cast<py::ssize_t>(result - data);
+}
+
+// argmax - Return index of maximum element
+py::ssize_t argmax(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("argmax currently only supports float64");
+    }
+    double const* data = arr->typed_data<double>();
+    py::ssize_t size = arr->size();
+
+    py::gil_scoped_release release;
+    double const* result;
+    if (policy == "par") {
+        result = hpx::max_element(hpx::execution::par, data, data + size);
+    } else if (policy == "par_unseq") {
+        result = hpx::max_element(hpx::execution::par_unseq, data, data + size);
+    } else {
+        result = hpx::max_element(hpx::execution::seq, data, data + size);
+    }
+    return static_cast<py::ssize_t>(result - data);
+}
+
+// diff - Compute n-th discrete difference using adjacent_difference
+// Simplified for float64 only
+std::shared_ptr<ndarray> diff(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("diff currently only supports float64");
+    }
+    if (arr->size() < 2) {
+        std::vector<py::ssize_t> shape = {0};
+        return std::make_shared<ndarray>(shape, arr->dtype());
+    }
+
+    std::vector<py::ssize_t> shape = {arr->size() - 1};
+    auto result = std::make_shared<ndarray>(shape, arr->dtype());
+    double const* src = arr->typed_data<double>();
+    double* dst = result->typed_data<double>();
+    py::ssize_t n = arr->size();
+
+    py::gil_scoped_release release;
+
+    std::vector<double> temp(n);
+    if (policy == "par") {
+        hpx::adjacent_difference(hpx::execution::par, src, src + n, temp.begin());
+    } else {
+        hpx::adjacent_difference(hpx::execution::seq, src, src + n, temp.begin());
+    }
+    std::copy(temp.begin() + 1, temp.end(), dst);
+
+    return result;
+}
+
+// unique - Return sorted unique elements
+// Simplified for float64 only
+std::shared_ptr<ndarray> unique(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("unique currently only supports float64");
+    }
+
+    auto sorted = sort(arr, policy);
+    double* data = sorted->typed_data<double>();
+    py::ssize_t n = sorted->size();
+
+    double* end;
+    {
+        py::gil_scoped_release release;
+
+        if (policy == "par") {
+            end = hpx::unique(hpx::execution::par, data, data + n);
+        } else {
+            end = hpx::unique(hpx::execution::seq, data, data + n);
+        }
+    }
+    // GIL is re-acquired here automatically
+
+    py::ssize_t new_size = end - data;
+    std::vector<py::ssize_t> shape = {new_size};
+    // Create dtype directly for float64
+    auto result = std::make_shared<ndarray>(shape, py::dtype::of<double>());
+    std::memcpy(result->data(), sorted->data(), new_size * sizeof(double));
+
+    return result;
+}
+
+// inclusive_scan - Running accumulation (like cumsum but more general)
+// Simplified for float64 only
+std::shared_ptr<ndarray> inclusive_scan(
+    std::shared_ptr<ndarray> arr,
+    std::string const& op = "add",
+    std::string const& policy = "par"
+) {
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("inclusive_scan currently only supports float64");
+    }
+
+    auto result = std::make_shared<ndarray>(arr->shape(), arr->dtype());
+    double const* src = arr->typed_data<double>();
+    double* dst = result->typed_data<double>();
+    py::ssize_t n = arr->size();
+
+    py::gil_scoped_release release;
+
+    if (op == "add") {
+        if (policy == "par") {
+            hpx::inclusive_scan(hpx::execution::par, src, src + n, dst, std::plus<double>{});
+        } else {
+            hpx::inclusive_scan(hpx::execution::seq, src, src + n, dst, std::plus<double>{});
+        }
+    } else if (op == "mul") {
+        if (policy == "par") {
+            hpx::inclusive_scan(hpx::execution::par, src, src + n, dst, std::multiplies<double>{});
+        } else {
+            hpx::inclusive_scan(hpx::execution::seq, src, src + n, dst, std::multiplies<double>{});
+        }
+    } else {
+        py::gil_scoped_acquire acquire;
+        throw std::invalid_argument("Unsupported op for inclusive_scan: " + op);
+    }
+
+    return result;
+}
+
+// exclusive_scan - Running accumulation excluding current element
+// Simplified for float64 only
+std::shared_ptr<ndarray> exclusive_scan(
+    std::shared_ptr<ndarray> arr,
+    py::object init_val,
+    std::string const& op = "add",
+    std::string const& policy = "par"
+) {
+    if (arr->dtype().kind() != 'f' || arr->dtype().itemsize() != 8) {
+        throw std::runtime_error("exclusive_scan currently only supports float64");
+    }
+
+    auto result = std::make_shared<ndarray>(arr->shape(), arr->dtype());
+    double const* src = arr->typed_data<double>();
+    double* dst = result->typed_data<double>();
+    py::ssize_t n = arr->size();
+    double init = init_val.cast<double>();
+
+    py::gil_scoped_release release;
+
+    if (op == "add") {
+        if (policy == "par") {
+            hpx::exclusive_scan(hpx::execution::par, src, src + n, dst, init, std::plus<double>{});
+        } else {
+            hpx::exclusive_scan(hpx::execution::seq, src, src + n, dst, init, std::plus<double>{});
+        }
+    } else if (op == "mul") {
+        if (policy == "par") {
+            hpx::exclusive_scan(hpx::execution::par, src, src + n, dst, init, std::multiplies<double>{});
+        } else {
+            hpx::exclusive_scan(hpx::execution::seq, src, src + n, dst, init, std::multiplies<double>{});
+        }
+    } else {
+        py::gil_scoped_acquire acquire;
+        throw std::invalid_argument("Unsupported op for exclusive_scan: " + op);
+    }
+
+    return result;
+}
+
+// transform_reduce - Fused transform and reduce in one pass
+// Fully explicit instantiation to avoid compiler crash
+py::object transform_reduce(
+    std::shared_ptr<ndarray> arr,
+    std::string const& transform_op,
+    std::string const& reduce_op = "add",
+    std::string const& policy = "par"
+) {
+    char kind = arr->dtype().kind();
+    auto itemsize = arr->dtype().itemsize();
+
+    if (kind != 'f' || itemsize != 8) {
+        throw std::runtime_error("transform_reduce currently only supports float64");
+    }
+
+    double const* data = arr->typed_data<double>();
+    py::ssize_t size = arr->size();
+
+    py::gil_scoped_release release;
+
+    double init = (reduce_op == "mul") ? 1.0 :
+                  (reduce_op == "min") ? std::numeric_limits<double>::max() :
+                  (reduce_op == "max") ? std::numeric_limits<double>::lowest() : 0.0;
+
+    double result = 0.0;
+
+    // Sum of squares: transform_op="square", reduce_op="add"
+    if (transform_op == "square" && reduce_op == "add") {
+        auto transform = [](double x) { return x * x; };
+        if (policy == "par") {
+            result = hpx::transform_reduce(hpx::execution::par, data, data + size, init,
+                std::plus<double>{}, transform);
+        } else if (policy == "par_unseq") {
+            result = hpx::transform_reduce(hpx::execution::par_unseq, data, data + size, init,
+                std::plus<double>{}, transform);
+        } else {
+            result = hpx::transform_reduce(hpx::execution::seq, data, data + size, init,
+                std::plus<double>{}, transform);
+        }
+    }
+    // Sum of absolute values: transform_op="abs", reduce_op="add"
+    else if (transform_op == "abs" && reduce_op == "add") {
+        auto transform = [](double x) { return std::abs(x); };
+        if (policy == "par") {
+            result = hpx::transform_reduce(hpx::execution::par, data, data + size, init,
+                std::plus<double>{}, transform);
+        } else if (policy == "par_unseq") {
+            result = hpx::transform_reduce(hpx::execution::par_unseq, data, data + size, init,
+                std::plus<double>{}, transform);
+        } else {
+            result = hpx::transform_reduce(hpx::execution::seq, data, data + size, init,
+                std::plus<double>{}, transform);
+        }
+    }
+    // Simple sum: transform_op="identity", reduce_op="add"
+    else if (transform_op == "identity" && reduce_op == "add") {
+        auto transform = [](double x) { return x; };
+        if (policy == "par") {
+            result = hpx::transform_reduce(hpx::execution::par, data, data + size, init,
+                std::plus<double>{}, transform);
+        } else if (policy == "par_unseq") {
+            result = hpx::transform_reduce(hpx::execution::par_unseq, data, data + size, init,
+                std::plus<double>{}, transform);
+        } else {
+            result = hpx::transform_reduce(hpx::execution::seq, data, data + size, init,
+                std::plus<double>{}, transform);
+        }
+    }
+    // Max element: transform_op="identity", reduce_op="max"
+    else if (transform_op == "identity" && reduce_op == "max") {
+        auto transform = [](double x) { return x; };
+        auto reduce = [](double a, double b) { return std::max(a, b); };
+        if (policy == "par") {
+            result = hpx::transform_reduce(hpx::execution::par, data, data + size, init,
+                reduce, transform);
+        } else if (policy == "par_unseq") {
+            result = hpx::transform_reduce(hpx::execution::par_unseq, data, data + size, init,
+                reduce, transform);
+        } else {
+            result = hpx::transform_reduce(hpx::execution::seq, data, data + size, init,
+                reduce, transform);
+        }
+    }
+    // Min element: transform_op="identity", reduce_op="min"
+    else if (transform_op == "identity" && reduce_op == "min") {
+        auto transform = [](double x) { return x; };
+        auto reduce = [](double a, double b) { return std::min(a, b); };
+        if (policy == "par") {
+            result = hpx::transform_reduce(hpx::execution::par, data, data + size, init,
+                reduce, transform);
+        } else if (policy == "par_unseq") {
+            result = hpx::transform_reduce(hpx::execution::par_unseq, data, data + size, init,
+                reduce, transform);
+        } else {
+            result = hpx::transform_reduce(hpx::execution::seq, data, data + size, init,
+                reduce, transform);
+        }
+    }
+    else {
+        py::gil_scoped_acquire acquire;
+        throw std::invalid_argument("Unsupported transform/reduce combination");
+    }
+
+    py::gil_scoped_acquire acquire;
+    return py::cast(result);
 }
 
 // Random number generation
@@ -869,6 +1227,114 @@ void bind_algorithms(py::module_& m) {
         "Element-wise power.");
     m.def("_where", &hpxpy::where_arr, py::arg("condition"), py::arg("x"), py::arg("y"),
         "Return elements chosen from x or y depending on condition.");
+
+    // New HPX algorithm exposures
+    m.def("_any", &hpxpy::any_of,
+        py::arg("arr"),
+        py::arg("policy") = "seq",
+        "Check if any element is truthy (non-zero). policy: 'seq', 'par', 'par_unseq'.");
+
+    m.def("_all", &hpxpy::all_of,
+        py::arg("arr"),
+        py::arg("policy") = "seq",
+        "Check if all elements are truthy (non-zero). policy: 'seq', 'par', 'par_unseq'.");
+
+    m.def("_argmin", &hpxpy::argmin,
+        py::arg("arr"),
+        py::arg("policy") = "seq",
+        "Return index of minimum element. policy: 'seq', 'par', 'par_unseq'.");
+
+    m.def("_argmax", &hpxpy::argmax,
+        py::arg("arr"),
+        py::arg("policy") = "seq",
+        "Return index of maximum element. policy: 'seq', 'par', 'par_unseq'.");
+
+    m.def("_diff", &hpxpy::diff,
+        py::arg("arr"),
+        py::arg("policy") = "seq",
+        "Compute n-th discrete difference (adjacent_difference). policy: 'seq', 'par', 'par_unseq'.");
+
+    m.def("_unique", &hpxpy::unique,
+        py::arg("arr"),
+        py::arg("policy") = "seq",
+        "Return sorted unique elements. policy: 'seq', 'par', 'par_unseq'.");
+
+    m.def("_inclusive_scan", &hpxpy::inclusive_scan,
+        py::arg("arr"),
+        py::arg("op") = "add",
+        py::arg("policy") = "par",
+        R"pbdoc(
+            Inclusive scan (running accumulation).
+
+            Parameters
+            ----------
+            arr : ndarray
+                Input array.
+            op : str
+                Binary operation: "add", "mul", "min", "max".
+            policy : str
+                Execution policy: "seq", "par", "par_unseq".
+
+            Returns
+            -------
+            ndarray
+                Scanned array where result[i] = op(arr[0], arr[1], ..., arr[i]).
+        )pbdoc");
+
+    m.def("_exclusive_scan", &hpxpy::exclusive_scan,
+        py::arg("arr"),
+        py::arg("init"),
+        py::arg("op") = "add",
+        py::arg("policy") = "par",
+        R"pbdoc(
+            Exclusive scan (running accumulation excluding current element).
+
+            Parameters
+            ----------
+            arr : ndarray
+                Input array.
+            init : scalar
+                Initial value.
+            op : str
+                Binary operation: "add", "mul".
+            policy : str
+                Execution policy: "seq", "par", "par_unseq".
+
+            Returns
+            -------
+            ndarray
+                Scanned array where result[i] = op(init, arr[0], arr[1], ..., arr[i-1]).
+        )pbdoc");
+
+    m.def("_transform_reduce", &hpxpy::transform_reduce,
+        py::arg("arr"),
+        py::arg("transform"),
+        py::arg("reduce") = "add",
+        py::arg("policy") = "par",
+        R"pbdoc(
+            Fused transform and reduce in one pass.
+
+            Parameters
+            ----------
+            arr : ndarray
+                Input array.
+            transform : str
+                Unary transform: "square", "abs", "negate", "identity".
+            reduce : str
+                Binary reduction: "add", "mul", "min", "max".
+            policy : str
+                Execution policy: "seq", "par", "par_unseq".
+
+            Returns
+            -------
+            scalar
+                Result of reduce(transform(arr[0]), transform(arr[1]), ...).
+
+            Examples
+            --------
+            Sum of squares: transform_reduce(arr, "square", "add")
+            Sum of absolute values: transform_reduce(arr, "abs", "add")
+        )pbdoc");
 
     // Random submodule
     auto random = m.def_submodule("random", "Random number generation.");

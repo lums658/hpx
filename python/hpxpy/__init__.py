@@ -169,6 +169,16 @@ try:
         _max,
         _sort,
         _count,
+        # New HPX algorithm exposures
+        _any,
+        _all,
+        _argmin,
+        _argmax,
+        _diff,
+        _unique,
+        _inclusive_scan,
+        _exclusive_scan,
+        _transform_reduce,
         # Math functions
         _sqrt,
         _square,
@@ -1082,6 +1092,243 @@ def count(arr, value, policy: str = "seq") -> int:
     """
     _check_available()
     return _count(arr, value, policy)
+
+
+# -----------------------------------------------------------------------------
+# New HPX Algorithm Exposures
+# -----------------------------------------------------------------------------
+
+
+def any(arr, axis=None, policy: str = "seq") -> bool:
+    """Check if any element is truthy (non-zero).
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array.
+    axis : None
+        Not yet supported, must be None.
+    policy : str, default "seq"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    bool
+        True if any element is non-zero.
+    """
+    _check_available()
+    if axis is not None:
+        raise NotImplementedError("axis parameter not yet supported")
+    return _any(arr, policy)
+
+
+def all(arr, axis=None, policy: str = "seq") -> bool:
+    """Check if all elements are truthy (non-zero).
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array.
+    axis : None
+        Not yet supported, must be None.
+    policy : str, default "seq"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    bool
+        True if all elements are non-zero.
+    """
+    _check_available()
+    if axis is not None:
+        raise NotImplementedError("axis parameter not yet supported")
+    return _all(arr, policy)
+
+
+def argmin(arr, axis=None, policy: str = "seq"):
+    """Return index of minimum element.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array.
+    axis : None
+        Not yet supported, must be None.
+    policy : str, default "seq"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    int
+        Index of minimum element.
+    """
+    _check_available()
+    if axis is not None:
+        raise NotImplementedError("axis parameter not yet supported")
+    return _argmin(arr, policy)
+
+
+def argmax(arr, axis=None, policy: str = "seq"):
+    """Return index of maximum element.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array.
+    axis : None
+        Not yet supported, must be None.
+    policy : str, default "seq"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    int
+        Index of maximum element.
+    """
+    _check_available()
+    if axis is not None:
+        raise NotImplementedError("axis parameter not yet supported")
+    return _argmax(arr, policy)
+
+
+def diff(arr, n: int = 1, axis: int = -1, policy: str = "seq") -> ndarray:
+    """Calculate n-th discrete difference along given axis.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array.
+    n : int, default 1
+        Number of times values are differenced.
+    axis : int, default -1
+        Axis along which to compute difference. Only -1 (last axis) supported.
+    policy : str, default "seq"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    ndarray
+        Array of differences with shape reduced by n along axis.
+    """
+    _check_available()
+    if axis != -1 and axis != arr.ndim - 1:
+        raise NotImplementedError("Only last axis (-1) supported")
+    if n != 1:
+        raise NotImplementedError("Only n=1 supported")
+    return _diff(arr, policy)
+
+
+def unique(arr, policy: str = "seq") -> ndarray:
+    """Return sorted unique elements.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array.
+    policy : str, default "seq"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    ndarray
+        Sorted unique elements.
+    """
+    _check_available()
+    return _unique(arr, policy)
+
+
+def inclusive_scan(arr, op: str = "add", policy: str = "par") -> ndarray:
+    """Inclusive scan (running accumulation).
+
+    This is a direct exposure of HPX's inclusive_scan algorithm.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array.
+    op : str, default "add"
+        Binary operation: "add", "mul", "min", "max".
+    policy : str, default "par"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    ndarray
+        Scanned array where result[i] = op(arr[0], ..., arr[i]).
+
+    Examples
+    --------
+    >>> arr = hpx.arange(5)
+    >>> hpx.inclusive_scan(arr, "add")  # cumsum: [0, 1, 3, 6, 10]
+    >>> hpx.inclusive_scan(arr, "mul")  # cumprod: [0, 0, 0, 0, 0]
+    >>> hpx.inclusive_scan(arr, "max")  # running max: [0, 1, 2, 3, 4]
+    """
+    _check_available()
+    return _inclusive_scan(arr, op, policy)
+
+
+def exclusive_scan(arr, init, op: str = "add", policy: str = "par") -> ndarray:
+    """Exclusive scan (running accumulation excluding current element).
+
+    This is a direct exposure of HPX's exclusive_scan algorithm.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array.
+    init : scalar
+        Initial value.
+    op : str, default "add"
+        Binary operation: "add", "mul".
+    policy : str, default "par"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    ndarray
+        Scanned array where result[i] = op(init, arr[0], ..., arr[i-1]).
+
+    Examples
+    --------
+    >>> arr = hpx.arange(5)
+    >>> hpx.exclusive_scan(arr, 0, "add")  # [0, 0, 1, 3, 6]
+    """
+    _check_available()
+    return _exclusive_scan(arr, init, op, policy)
+
+
+def transform_reduce(arr, transform: str, reduce: str = "add", policy: str = "par"):
+    """Fused transform and reduce in one pass.
+
+    This is a direct exposure of HPX's transform_reduce algorithm, which
+    combines a unary transform with a binary reduction in a single pass
+    over the data for better performance.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Input array.
+    transform : str
+        Unary transform: "square", "abs", "negate", "identity".
+    reduce : str, default "add"
+        Binary reduction: "add", "mul", "min", "max".
+    policy : str, default "par"
+        Execution policy: "seq", "par", or "par_unseq".
+
+    Returns
+    -------
+    scalar
+        Result of reduce(transform(arr[0]), transform(arr[1]), ...).
+
+    Examples
+    --------
+    >>> arr = hpx.arange(5)
+    >>> hpx.transform_reduce(arr, "square", "add")  # sum of squares
+    >>> hpx.transform_reduce(arr, "abs", "add")     # sum of absolute values
+    >>> hpx.transform_reduce(arr, "identity", "max") # max element
+    """
+    _check_available()
+    return _transform_reduce(arr, transform, reduce, policy)
 
 
 # -----------------------------------------------------------------------------

@@ -2,6 +2,35 @@
 
 Deferred features and enhancements for future phases.
 
+## Known Compiler Issues
+
+### Apple Clang 17.0.0 Crashes with hpx::any_of / hpx::all_of
+
+**Status**: ACTIVE BUG - Workaround in place
+
+**Symptom**: Compiler segfaults (Segmentation fault: 11) when compiling code that uses `hpx::any_of` or `hpx::all_of` directly with lambda predicates.
+
+**Affected Code**:
+```cpp
+// This crashes Apple clang 17.0.0:
+hpx::any_of(hpx::execution::par, data, data + size,
+    [](double val) { return val != 0.0; });
+```
+
+**Workaround**: Use `hpx::count_if` instead, which provides equivalent functionality:
+```cpp
+// This works:
+auto count = hpx::count_if(hpx::execution::par, data, data + size,
+    [](double val) { return val != 0.0; });
+return count > 0;  // any_of semantics
+```
+
+**Location**: [algorithm_bindings.cpp:615-670](python/src/bindings/algorithm_bindings.cpp#L615)
+
+**Impact**: `any()` and `all()` functions work correctly but use count-based implementation instead of early-exit algorithms. Performance may be slightly worse for large arrays where the result could be determined early.
+
+**TODO**: Test with newer clang versions or GCC to see if direct `hpx::any_of`/`hpx::all_of` can be used.
+
 ## Phase 7: Array Indexing & Assignment (COMPLETED)
 
 ### Integer Indexing
@@ -113,16 +142,16 @@ Expose HPX `for_each`/`transform` to allow user-defined element-wise operations 
 HPX provides 72 parallel algorithms. The following are NOT yet exposed but have high value:
 
 **Tier 1 - High Priority:**
-- [ ] `all_any_none` → `any()`, `all()` - Parallel boolean reductions
-- [ ] `minmax_element` → `argmin()`, `argmax()` - Find index of min/max
-- [ ] `adjacent_difference` → `diff()` - Parallel differences
-- [ ] `unique` → `unique()` - Parallel unique elements
+- [x] `all_any_none` → `any()`, `all()` - Parallel boolean reductions *(implemented via count_if due to clang bug)*
+- [x] `minmax_element` → `argmin()`, `argmax()` - Find index of min/max
+- [x] `adjacent_difference` → `diff()` - Parallel differences
+- [x] `unique` → `unique()` - Parallel unique elements
 - [ ] `sort_by_key` → Fix `argsort()` - Currently uses NumPy fallback
 - [ ] `reduce` (custom op) → `hpx.reduce(arr, op)` - General reduction with custom binary op
 - [ ] `reduce_deterministic` → `hpx.reduce_deterministic()` - Deterministic FP reduction order
-- [ ] `inclusive_scan` → `hpx.inclusive_scan()`, `cumsum` - Running accumulation (expose directly)
-- [ ] `exclusive_scan` → `hpx.exclusive_scan()` - Prefix sum excluding current element
-- [ ] `transform_reduce` → `hpx.transform_reduce()` - Fused transform+reduce in one pass
+- [x] `inclusive_scan` → `hpx.inclusive_scan()`, `cumsum` - Running accumulation (expose directly)
+- [x] `exclusive_scan` → `hpx.exclusive_scan()` - Prefix sum excluding current element
+- [x] `transform_reduce` → `hpx.transform_reduce()` - Fused transform+reduce in one pass
 - [ ] `reduce_by_key` → `hpx.reduce_by_key()` - Grouped reductions (enables histogram)
 
 **Tier 2 - Medium Priority:**
@@ -147,10 +176,10 @@ HPX provides 72 parallel algorithms. The following are NOT yet exposed but have 
 
 **Tier 1 - Very High Parallel Benefit:**
 - [ ] `dot` / `matmul` - Matrix multiplication (massive parallel benefit)
-- [ ] `any` / `all` - Boolean reductions (use HPX all_any_none)
-- [ ] `argmin` / `argmax` - Index of extrema (use HPX minmax_element)
-- [ ] `diff` - Differences (use HPX adjacent_difference)
-- [ ] `unique` - Unique elements (use HPX unique)
+- [x] `any` / `all` - Boolean reductions (use HPX count_if - workaround for clang bug)
+- [x] `argmin` / `argmax` - Index of extrema (use HPX min/max_element)
+- [x] `diff` - Differences (use HPX adjacent_difference)
+- [x] `unique` - Unique elements (use HPX unique)
 - [ ] `reduce` - General ufunc.reduce (use HPX reduce with custom op)
 - [ ] `accumulate` - General ufunc.accumulate (use HPX inclusive_scan with custom op)
 
