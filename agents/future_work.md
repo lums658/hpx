@@ -94,6 +94,20 @@ Deferred features and enhancements for future phases.
 
 ## Future Enhancements (Deferred)
 
+### Custom Parallel Transform (High Priority)
+
+Expose HPX `for_each`/`transform` to allow user-defined element-wise operations without Python callback overhead.
+
+**Challenge**: Python functions require GIL, which serializes parallelism.
+
+**Implementation Options** (in order of recommendation):
+- [ ] **Expression strings** - Parse math expressions in C++: `hpx.transform(arr, "x * 2 + sin(x)")`. Simple, covers 80% of use cases, no dependencies.
+- [ ] **Lazy expression trees** - Build expression graph in Python, execute in C++: `expr = x * 2 + hpx.sin(x); expr.evaluate()`. More flexible, similar to TensorFlow/Dask.
+- [ ] **Numba integration** - Accept Numba-compiled functions: `hpx.transform(arr, numba_func)`. Most flexible, requires Numba dependency.
+- [ ] **Custom kernel registration** - Compile C++ kernels once, reuse: `hpx.register_kernel("my_op", "x * 2")`.
+
+**Note**: Composition of existing ops already works in parallel: `arr * 2 + 1`, `hpx.sin(arr) + hpx.cos(arr)`.
+
 ### HPX Algorithms to Expose in Python
 
 HPX provides 72 parallel algorithms. The following are NOT yet exposed but have high value:
