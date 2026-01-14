@@ -5,10 +5,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <hpx/hpx.hpp>
 #include <hpx/hpx_init.hpp>
 #include <hpx/hpx_start.hpp>
-#include <hpx/runtime.hpp>
-#include <hpx/modules/runtime_local.hpp>
 
 #include <atomic>
 #include <memory>
@@ -86,8 +85,13 @@ void finalize() {
     // Release GIL during finalization
     py::gil_scoped_release release;
 
-    // Stop the HPX runtime
-    hpx::finalize();
+    // Schedule hpx::finalize on an HPX thread using hpx::post
+    // This ensures we're calling finalize from within the HPX runtime
+    hpx::post([]() {
+        hpx::finalize();
+    });
+
+    // Wait for the runtime to stop
     hpx::stop();
 
     g_running.store(false);
