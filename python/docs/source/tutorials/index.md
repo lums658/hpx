@@ -31,28 +31,57 @@ Topics covered:
 Master HPXPy's parallel algorithms for fast array processing.
 
 Topics covered:
-- reduce, transform, for_each
-- Custom reduction operations
-- Performance comparison with NumPy
+- Math functions (sqrt, exp, sin, etc.)
+- Sorting algorithms
+- Scan operations (cumsum, cumprod)
+- Random number generation
+- Execution policies
 :::
 
-:::{grid-item-card} 3. Distributed Computing
-:link: 03_distributed_computing
+:::{grid-item-card} 3. Math and Algorithms
+:link: 03_math_and_algorithms
 :link-type: doc
 
-**Level:** Advanced | **Time:** 30 min
+**Level:** Intermediate | **Time:** 25 min
 
-Scale across multiple nodes with distributed arrays.
+Deep dive into mathematical operations and parallel algorithms.
 
 Topics covered:
-- Multi-locality concepts
-- Distributed array creation
-- Collective operations
-- Launching multi-node jobs
+- Element-wise math functions
+- Reduction operations
+- Custom parallel operations
 :::
 
-:::{grid-item-card} 4. GPU Acceleration
-:link: 05_gpu_acceleration
+:::{grid-item-card} 4. Slicing
+:link: 04_slicing
+:link-type: doc
+
+**Level:** Beginner | **Time:** 15 min
+
+Master array slicing operations.
+
+Topics covered:
+- Basic slicing (start:stop:step)
+- Negative indices
+- NumPy compatibility
+:::
+
+:::{grid-item-card} 5. Reshape Operations
+:link: 05_reshape
+:link-type: doc
+
+**Level:** Beginner | **Time:** 15 min
+
+Learn array shape manipulation.
+
+Topics covered:
+- Reshape arrays
+- Flatten and ravel
+- Broadcasting basics
+:::
+
+:::{grid-item-card} 6. GPU Acceleration
+:link: 06_gpu_acceleration
 :link-type: doc
 
 **Level:** Advanced | **Time:** 30 min
@@ -66,23 +95,23 @@ Topics covered:
 - Async operations with futures
 :::
 
-:::{grid-item-card} 5. Array Operations
-:link: 06_array_operations
+:::{grid-item-card} 7. Distributed Computing
+:link: 07_distributed_computing
 :link-type: doc
 
-**Level:** Beginner | **Time:** 15 min
+**Level:** Advanced | **Time:** 30 min
 
-Master array slicing and reshape operations.
+Scale across multiple nodes with distributed arrays.
 
 Topics covered:
-- Basic slicing (start:stop)
-- Step slicing (::2)
-- Negative indices
-- NumPy compatibility
+- Multi-locality concepts
+- Distributed array creation
+- Collective operations
+- Launching multi-node jobs
 :::
 
-:::{grid-item-card} 6. Benchmarks
-:link: 07_benchmarks
+:::{grid-item-card} 8. Benchmarks
+:link: 08_benchmarks
 :link-type: doc
 
 **Level:** Intermediate | **Time:** 20 min
@@ -96,49 +125,20 @@ Topics covered:
 - Performance analysis
 :::
 
-:::{grid-item-card} 7. Monte Carlo Simulations
-:link: 08_monte_carlo
+:::{grid-item-card} 9. Advanced Algorithms
+:link: 09_advanced_algorithms
 :link-type: doc
 
-**Level:** Intermediate | **Time:** 25 min
+**Level:** Advanced | **Time:** 30 min
 
-Learn Monte Carlo methods with parallel random sampling.
-
-Topics covered:
-- Pi estimation
-- Monte Carlo integration
-- Multi-dimensional integration
-- Convergence analysis
-:::
-
-:::{grid-item-card} 8. Black-Scholes Option Pricing
-:link: 09_black_scholes
-:link-type: doc
-
-**Level:** Intermediate | **Time:** 25 min
-
-Financial computing with the Black-Scholes model.
+Master advanced HPX parallel algorithms.
 
 Topics covered:
-- Option pricing formula
-- Greeks computation
-- Volatility surfaces
-- Batch pricing with broadcasting
-:::
-
-:::{grid-item-card} 9. Image Processing
-:link: 10_image_processing
-:link-type: doc
-
-**Level:** Intermediate | **Time:** 20 min
-
-Parallel image processing operations.
-
-Topics covered:
-- Image normalization
-- RGB channel operations
-- Batch image statistics
-- Performance comparison
+- Scan algorithms (inclusive/exclusive)
+- Transform-reduce operations
+- Set operations (union, intersection)
+- Selection algorithms (median, percentile)
+- Grouped reductions (reduce_by_key)
 :::
 
 ::::
@@ -184,11 +184,11 @@ pip install jupyterlab numpy matplotlib
 
 01_getting_started
 02_parallel_algorithms
-03_distributed_computing
-05_gpu_acceleration
-06_array_operations
-07_benchmarks
-08_monte_carlo
-09_black_scholes
-10_image_processing
+03_math_and_algorithms
+04_slicing
+05_reshape
+06_gpu_acceleration
+07_distributed_computing
+08_benchmarks
+09_advanced_algorithms
 ```

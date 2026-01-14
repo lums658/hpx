@@ -78,7 +78,68 @@ make html
 
 # Live preview with auto-reload
 make livehtml
+
+# Check for broken links
+make linkcheck
 ```
+
+### Notebook Execution in Sphinx
+
+The documentation uses [nbsphinx](https://nbsphinx.readthedocs.io/) to render Jupyter notebooks directly in Sphinx. By default, notebooks are **not executed** during builds (`nbsphinx_execute = "never"` in conf.py).
+
+#### Enabling Notebook Execution
+
+To execute notebooks during documentation builds:
+
+1. **Edit `conf.py`**:
+   ```python
+   # Options: "never", "auto", "always"
+   nbsphinx_execute = "auto"  # Execute if no outputs exist
+   # or
+   nbsphinx_execute = "always"  # Always re-execute
+   ```
+
+2. **Set up the HPX environment**:
+   ```bash
+   source /path/to/hpx/build/setup_env.sh
+   ```
+
+3. **Install the Jupyter kernel**:
+   ```bash
+   pip install ipykernel
+   python -m ipykernel install --user --name hpxpy
+   ```
+
+4. **Build with execution**:
+   ```bash
+   make clean html
+   ```
+
+#### Execution Timeout
+
+For notebooks with long-running cells, increase the timeout:
+
+```python
+# In conf.py
+nbsphinx_timeout = 300  # 5 minutes per cell
+```
+
+#### Pre-executing Notebooks
+
+For reproducible builds, pre-execute notebooks and commit the outputs:
+
+```bash
+# Execute all notebooks
+cd python/tutorials
+for nb in *.ipynb; do
+    jupyter nbconvert --to notebook --execute --inplace "$nb"
+done
+```
+
+This ensures:
+- Consistent output across builds
+- Faster documentation builds
+- No HPX runtime dependency for doc builds
 
 ## Code Style
 

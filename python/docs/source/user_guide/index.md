@@ -74,7 +74,7 @@ total = hpx.all_reduce(arr)
 hpx.broadcast(arr, root=0)
 ```
 
-See the [Distributed Computing Tutorial](../tutorials/03_distributed_computing) for details.
+See the [Distributed Computing Tutorial](../tutorials/07_distributed_computing) for details.
 
 ### GPU Acceleration
 
@@ -95,7 +95,7 @@ if hpx.sycl.is_available():
     arr = hpx.zeros(1000000, device='sycl')
 ```
 
-See the [GPU Acceleration Tutorial](../tutorials/05_gpu_acceleration) for details.
+See the [GPU Acceleration Tutorial](../tutorials/06_gpu_acceleration) for details.
 
 ## Best Practices
 

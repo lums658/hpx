@@ -868,6 +868,17 @@ def sum(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq")
     -------
     ndarray or scalar
         Sum of elements.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.arange(10)
+    >>> hpx.sum(arr)
+    45.0
+    >>> hpx.sum(arr, policy="par")  # Multi-threaded for large arrays
+    45.0
+    >>> hpx.finalize()
     """
     _check_available()
     if axis is None:
@@ -911,6 +922,15 @@ def prod(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq"
     -------
     ndarray or scalar
         Product of elements.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([1.0, 2.0, 3.0, 4.0])
+    >>> hpx.prod(arr)
+    24.0
+    >>> hpx.finalize()
     """
     _check_available()
     if axis is not None:
@@ -939,6 +959,15 @@ def min(arr, axis=None, keepdims: bool = False, policy: str = "seq"):
     -------
     ndarray or scalar
         Minimum value.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([3.0, 1.0, 4.0, 1.0, 5.0])
+    >>> hpx.min(arr)
+    1.0
+    >>> hpx.finalize()
     """
     _check_available()
     if axis is not None:
@@ -967,6 +996,15 @@ def max(arr, axis=None, keepdims: bool = False, policy: str = "seq"):
     -------
     ndarray or scalar
         Maximum value.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([3.0, 1.0, 4.0, 1.0, 5.0])
+    >>> hpx.max(arr)
+    5.0
+    >>> hpx.finalize()
     """
     _check_available()
     if axis is not None:
@@ -1094,6 +1132,17 @@ def sort(arr, axis: int = -1, policy: str = "seq") -> ndarray:
     -------
     ndarray
         Sorted array.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([3.0, 1.0, 4.0, 1.0, 5.0])
+    >>> hpx.sort(arr)
+    array([1., 1., 3., 4., 5.])
+    >>> hpx.sort(arr, policy="par")  # Multi-threaded for large arrays
+    array([1., 1., 3., 4., 5.])
+    >>> hpx.finalize()
     """
     _check_available()
     # Phase 1: only support 1D arrays
@@ -1119,6 +1168,18 @@ def argsort(arr, axis: int = -1, policy: str = "seq") -> ndarray:
     -------
     ndarray
         Array of indices that sort the input.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([3.0, 1.0, 4.0, 1.0, 5.0])
+    >>> indices = hpx.argsort(arr)
+    >>> indices
+    array([1, 3, 0, 2, 4])
+    >>> arr[indices]  # Sorted array
+    array([1., 1., 3., 4., 5.])
+    >>> hpx.finalize()
     """
     _check_available()
     if arr.ndim != 1:
@@ -1517,6 +1578,19 @@ def array_equal(arr1, arr2, policy: str = "par") -> bool:
     -------
     bool
         True if arrays are equal.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> a = hpx.array([1.0, 2.0, 3.0])
+    >>> b = hpx.array([1.0, 2.0, 3.0])
+    >>> hpx.array_equal(a, b)
+    True
+    >>> c = hpx.array([1.0, 2.0, 4.0])
+    >>> hpx.array_equal(a, c)
+    False
+    >>> hpx.finalize()
     """
     _check_available()
     return _array_equal(arr1, arr2, policy)
@@ -1536,6 +1610,15 @@ def flip(arr, policy: str = "par") -> ndarray:
     -------
     ndarray
         Reversed array.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    >>> hpx.flip(arr)
+    array([5., 4., 3., 2., 1.])
+    >>> hpx.finalize()
     """
     _check_available()
     return _flip(arr, policy)
@@ -1543,6 +1626,9 @@ def flip(arr, policy: str = "par") -> ndarray:
 
 def stable_sort(arr, policy: str = "par") -> ndarray:
     """Sort array with stable ordering (preserves relative order of equals).
+
+    Unlike regular sort, stable_sort guarantees that elements with equal values
+    maintain their original relative order.
 
     Parameters
     ----------
@@ -1555,6 +1641,15 @@ def stable_sort(arr, policy: str = "par") -> ndarray:
     -------
     ndarray
         Sorted array.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([3.0, 1.0, 4.0, 1.0, 5.0])
+    >>> hpx.stable_sort(arr)
+    array([1., 1., 3., 4., 5.])
+    >>> hpx.finalize()
     """
     _check_available()
     return _stable_sort(arr, policy)
@@ -1570,7 +1665,7 @@ def roll(arr, shift: int, policy: str = "par") -> ndarray:
     arr : ndarray
         Input array (1D float64).
     shift : int
-        Number of positions to roll. Positive shifts left.
+        Number of positions to roll. Positive shifts elements left (rotate left).
     policy : str, default "par"
         Execution policy: "seq", "par", or "par_unseq".
 
@@ -1582,6 +1677,17 @@ def roll(arr, shift: int, policy: str = "par") -> ndarray:
     Note
     ----
     Uses HPX rotate for parallel rotation.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    >>> hpx.roll(arr, 2)  # Rotate left by 2
+    array([3., 4., 5., 1., 2.])
+    >>> hpx.roll(arr, -1)  # Rotate right by 1
+    array([5., 1., 2., 3., 4.])
+    >>> hpx.finalize()
     """
     _check_available()
     return _rotate(arr, shift, policy)
@@ -1603,6 +1709,15 @@ def nonzero(arr) -> ndarray:
     Note
     ----
     Currently sequential to maintain deterministic ordering.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([0.0, 1.0, 0.0, 2.0, 0.0, 3.0])
+    >>> hpx.nonzero(arr)
+    array([1, 3, 5])
+    >>> hpx.finalize()
     """
     _check_available()
     return _nonzero(arr, "seq")
@@ -1611,7 +1726,8 @@ def nonzero(arr) -> ndarray:
 def nth_element(arr, n: int, policy: str = "par"):
     """Find the nth element as if array were sorted.
 
-    Uses partial sort (std::nth_element) which is O(n) average.
+    Uses partial sort (std::nth_element) which is O(n) average complexity,
+    much faster than full sorting for finding a single order statistic.
 
     Parameters
     ----------
@@ -1626,6 +1742,19 @@ def nth_element(arr, n: int, policy: str = "par"):
     -------
     scalar
         The nth smallest element.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0])
+    >>> hpx.nth_element(arr, 0)  # Minimum
+    1.0
+    >>> hpx.nth_element(arr, 3)  # 4th smallest (0-indexed)
+    3.0
+    >>> hpx.nth_element(arr, -1)  # Maximum
+    9.0
+    >>> hpx.finalize()
     """
     _check_available()
     return _nth_element(arr, n, policy)
@@ -1634,7 +1763,8 @@ def nth_element(arr, n: int, policy: str = "par"):
 def median(arr):
     """Compute the median of array elements.
 
-    Uses nth_element for O(n) average complexity.
+    Uses nth_element for O(n) average complexity, making it faster than
+    sorting-based median implementations for large arrays.
 
     Parameters
     ----------
@@ -1645,6 +1775,18 @@ def median(arr):
     -------
     scalar
         Median value. For even-length arrays, returns average of middle two.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([1.0, 3.0, 5.0, 7.0, 9.0])
+    >>> hpx.median(arr)
+    5.0
+    >>> arr2 = hpx.array([1.0, 2.0, 3.0, 4.0])
+    >>> hpx.median(arr2)  # Average of 2.0 and 3.0
+    2.5
+    >>> hpx.finalize()
     """
     _check_available()
     return _median(arr)
@@ -1684,6 +1826,9 @@ def percentile(arr, q: float):
 def merge_sorted(arr1, arr2, policy: str = "par") -> ndarray:
     """Merge two sorted arrays into a single sorted array.
 
+    Both input arrays must be sorted. The result is a single sorted array
+    containing all elements from both inputs.
+
     Parameters
     ----------
     arr1, arr2 : ndarray
@@ -1695,6 +1840,16 @@ def merge_sorted(arr1, arr2, policy: str = "par") -> ndarray:
     -------
     ndarray
         Merged sorted array.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> a = hpx.array([1.0, 3.0, 5.0])
+    >>> b = hpx.array([2.0, 4.0, 6.0])
+    >>> hpx.merge_sorted(a, b)
+    array([1., 2., 3., 4., 5., 6.])
+    >>> hpx.finalize()
     """
     _check_available()
     return _merge(arr1, arr2, policy)
@@ -1714,6 +1869,16 @@ def setdiff1d(arr1, arr2, policy: str = "par") -> ndarray:
     -------
     ndarray
         Unique values in arr1 that are not in arr2, sorted.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> a = hpx.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    >>> b = hpx.array([2.0, 4.0])
+    >>> hpx.setdiff1d(a, b)  # Elements in a but not in b
+    array([1., 3., 5.])
+    >>> hpx.finalize()
     """
     _check_available()
     return _setdiff1d(arr1, arr2, policy)
@@ -1733,6 +1898,16 @@ def intersect1d(arr1, arr2, policy: str = "par") -> ndarray:
     -------
     ndarray
         Sorted unique values present in both arrays.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> a = hpx.array([1.0, 2.0, 3.0, 4.0])
+    >>> b = hpx.array([2.0, 4.0, 5.0, 6.0])
+    >>> hpx.intersect1d(a, b)  # Elements in both a and b
+    array([2., 4.])
+    >>> hpx.finalize()
     """
     _check_available()
     return _intersect1d(arr1, arr2, policy)
@@ -1752,6 +1927,16 @@ def union1d(arr1, arr2, policy: str = "par") -> ndarray:
     -------
     ndarray
         Sorted unique values from either array.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> a = hpx.array([1.0, 2.0, 3.0])
+    >>> b = hpx.array([2.0, 4.0, 5.0])
+    >>> hpx.union1d(a, b)  # All unique elements from a and b
+    array([1., 2., 3., 4., 5.])
+    >>> hpx.finalize()
     """
     _check_available()
     return _union1d(arr1, arr2, policy)
@@ -1771,6 +1956,16 @@ def setxor1d(arr1, arr2, policy: str = "par") -> ndarray:
     -------
     ndarray
         Sorted unique values in exactly one of the arrays.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> a = hpx.array([1.0, 2.0, 3.0])
+    >>> b = hpx.array([2.0, 3.0, 4.0])
+    >>> hpx.setxor1d(a, b)  # Elements in a or b, but not both
+    array([1., 4.])
+    >>> hpx.finalize()
     """
     _check_available()
     return _setxor1d(arr1, arr2, policy)
@@ -1790,6 +1985,19 @@ def includes(arr1, arr2, policy: str = "par") -> bool:
     -------
     bool
         True if every element in arr2 is also in arr1.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> a = hpx.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    >>> b = hpx.array([2.0, 4.0])
+    >>> hpx.includes(a, b)  # Does a contain all elements of b?
+    True
+    >>> c = hpx.array([2.0, 6.0])
+    >>> hpx.includes(a, c)  # Does a contain all elements of c?
+    False
+    >>> hpx.finalize()
     """
     _check_available()
     return _includes(arr1, arr2, policy)
@@ -1809,6 +2017,16 @@ def isin(arr, test_arr) -> ndarray:
     -------
     ndarray
         Boolean array of same shape as arr, True where element is in test_arr.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    >>> test = hpx.array([2.0, 4.0])
+    >>> hpx.isin(arr, test)  # Which elements of arr are in test?
+    array([False, True, False, True, False])
+    >>> hpx.finalize()
     """
     _check_available()
     return _isin(arr, test_arr)
@@ -1816,6 +2034,8 @@ def isin(arr, test_arr) -> ndarray:
 
 def searchsorted(arr, values, side: str = "left") -> ndarray:
     """Find indices where values should be inserted in sorted arr.
+
+    Uses binary search to find insertion points efficiently (O(log n) per value).
 
     Parameters
     ----------
@@ -1830,6 +2050,18 @@ def searchsorted(arr, values, side: str = "left") -> ndarray:
     -------
     ndarray
         Indices (int64) where values should be inserted.
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    >>> values = hpx.array([2.5, 0.5, 5.5])
+    >>> hpx.searchsorted(arr, values)  # Where to insert each value
+    array([2, 0, 5])
+    >>> hpx.searchsorted(arr, values, side="right")
+    array([2, 0, 5])
+    >>> hpx.finalize()
     """
     _check_available()
     return _searchsorted(arr, values, side)
@@ -1839,7 +2071,8 @@ def partition(arr, pivot: float) -> ndarray:
     """Partition array around a pivot value.
 
     Rearranges elements so that all elements less than pivot come before
-    elements greater than or equal to pivot.
+    elements greater than or equal to pivot. Useful for implementing quicksort
+    variants or filtering data.
 
     Parameters
     ----------
@@ -1852,6 +2085,15 @@ def partition(arr, pivot: float) -> ndarray:
     -------
     ndarray
         Partitioned array (elements < pivot come first).
+
+    Examples
+    --------
+    >>> import hpxpy as hpx
+    >>> hpx.init()
+    >>> arr = hpx.array([3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0])
+    >>> hpx.partition(arr, 4.0)  # Elements < 4 come first
+    array([3., 1., 1., 2., ...])  # Order within partitions may vary
+    >>> hpx.finalize()
     """
     _check_available()
     return _partition(arr, pivot)

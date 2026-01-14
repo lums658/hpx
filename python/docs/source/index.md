@@ -84,7 +84,7 @@ hpx.finalize()
 
 ## Documentation
 
-::::{grid} 1 2 2 2
+::::{grid} 1 2 2 3
 :gutter: 3
 
 :::{grid-item-card} {fas}`rocket` Getting Started
@@ -123,6 +123,15 @@ Complete API documentation with examples.
 [Browse API →](api/index)
 :::
 
+:::{grid-item-card} {fas}`flask` Examples Gallery
+:link: examples/index
+:link-type: doc
+
+Real-world applications: Monte Carlo, ML, finance, image processing.
++++
+[View Examples →](examples/index)
+:::
+
 ::::
 
 ## HPX Ecosystem
@@ -145,6 +154,7 @@ HPXPy is distributed under the [Boost Software License 1.0](https://www.boost.or
 
 getting_started/index
 tutorials/index
+examples/index
 user_guide/index
 api/index
 development/index

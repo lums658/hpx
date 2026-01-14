@@ -2,55 +2,719 @@
 
 Complete API documentation for HPXPy.
 
-## Core Module (`hpxpy`)
+```{note}
+This API reference includes full function signatures and examples.
+When HPXPy is installed, additional documentation is auto-generated from docstrings.
+```
 
-### Runtime Functions
+## Runtime Management
+
+Functions for initializing and managing the HPX runtime.
+
+### `init`
+
+```python
+hpx.init(num_threads: int = None, distributed: bool = False) -> None
+```
+
+Initialize the HPX runtime system.
+
+**Parameters:**
+- `num_threads` - Number of worker threads. If None, uses all available cores.
+- `distributed` - Enable distributed mode for multi-node execution.
+
+**Example:**
+```python
+import hpxpy as hpx
+
+# Initialize with 4 threads
+hpx.init(num_threads=4)
+
+# ... perform operations ...
+
+hpx.finalize()
+```
+
+### `finalize`
+
+```python
+hpx.finalize() -> None
+```
+
+Shut down the HPX runtime and release resources.
+
+### `is_running`
+
+```python
+hpx.is_running() -> bool
+```
+
+Check if the HPX runtime is currently active.
+
+### `runtime`
+
+```python
+@contextmanager
+hpx.runtime(num_threads: int = None, distributed: bool = False)
+```
+
+Context manager for automatic runtime management.
+
+**Example:**
+```python
+with hpx.runtime(num_threads=8):
+    arr = hpx.arange(1000000)
+    print(hpx.sum(arr))
+# Runtime automatically finalized
+```
+
+### `num_threads`
+
+```python
+hpx.num_threads() -> int
+```
+
+Return the number of HPX worker threads.
+
+### `num_localities`
+
+```python
+hpx.num_localities() -> int
+```
+
+Return the number of localities (nodes) in distributed mode.
+
+### `locality_id`
+
+```python
+hpx.locality_id() -> int
+```
+
+Return the ID of the current locality.
+
+---
+
+## Array Creation
+
+Functions for creating HPXPy arrays.
+
+### `array`
+
+```python
+hpx.array(data, dtype=None, device: str = 'cpu') -> ndarray
+```
+
+Create an array from existing data.
+
+**Parameters:**
+- `data` - Input data (list, tuple, numpy array, or scalar)
+- `dtype` - NumPy dtype for the array. If None, inferred from data.
+- `device` - Target device: `'cpu'`, `'gpu'`, `'sycl'`, or `'auto'`
+
+**Example:**
+```python
+a = hpx.array([1.0, 2.0, 3.0])
+b = hpx.array([[1, 2], [3, 4]], dtype='float64')
+```
+
+### `zeros`
+
+```python
+hpx.zeros(shape, dtype='float64', device: str = 'cpu') -> ndarray
+```
+
+Create an array of zeros.
+
+**Parameters:**
+- `shape` - Shape of the array (int or tuple)
+- `dtype` - Data type (default: float64)
+- `device` - Target device
+
+**Example:**
+```python
+a = hpx.zeros(1000)              # 1D array
+b = hpx.zeros((100, 100))        # 2D array
+c = hpx.zeros(1000, device='gpu') # GPU array
+```
+
+### `ones`
+
+```python
+hpx.ones(shape, dtype='float64', device: str = 'cpu') -> ndarray
+```
+
+Create an array of ones.
+
+### `empty`
+
+```python
+hpx.empty(shape, dtype='float64', device: str = 'cpu') -> ndarray
+```
+
+Create an uninitialized array.
+
+### `full`
+
+```python
+hpx.full(shape, fill_value, dtype=None, device: str = 'cpu') -> ndarray
+```
+
+Create an array filled with a specified value.
+
+### `arange`
+
+```python
+hpx.arange(start=None, stop=None, step=1, dtype='float64') -> ndarray
+```
+
+Create an array with evenly spaced values within a range.
+
+**Parameters:**
+- `start` - Start of interval (default: 0)
+- `stop` - End of interval (exclusive)
+- `step` - Spacing between values (default: 1)
+- `dtype` - Output array data type
+
+**Example:**
+```python
+a = hpx.arange(10)           # [0, 1, 2, ..., 9]
+b = hpx.arange(0, 10, 2)     # [0, 2, 4, 6, 8]
+c = hpx.arange(10, 0, -1)    # [10, 9, 8, ..., 1]
+```
+
+### `linspace`
+
+```python
+hpx.linspace(start, stop, num=50, dtype='float64') -> ndarray
+```
+
+Create an array with evenly spaced values over an interval.
+
+**Parameters:**
+- `start` - Start value
+- `stop` - End value (inclusive)
+- `num` - Number of samples (default: 50)
+- `dtype` - Output data type
+
+**Example:**
+```python
+a = hpx.linspace(0, 1, 100)  # 100 points from 0 to 1
+```
+
+### `from_numpy`
+
+```python
+hpx.from_numpy(arr: np.ndarray, device: str = 'cpu') -> ndarray
+```
+
+Create an HPXPy array from a NumPy array.
+
+---
+
+## Reduction Operations
+
+Parallel reduction functions with execution policy support.
+
+### `sum`
+
+```python
+hpx.sum(arr, axis=None, dtype=None, keepdims=False, policy='seq') -> ndarray | scalar
+```
+
+Sum of array elements.
+
+**Parameters:**
+- `arr` - Input array
+- `axis` - Axis along which to sum. If None, sum all elements.
+- `dtype` - Type to use for accumulation
+- `keepdims` - Keep reduced dimensions with size 1
+- `policy` - Execution policy: `'seq'`, `'par'`, or `'par_unseq'`
+
+**Example:**
+```python
+arr = hpx.arange(1000000)
+total = hpx.sum(arr)                    # Sequential
+total = hpx.sum(arr, policy='par')      # Parallel (multi-threaded)
+```
+
+### `prod`
+
+```python
+hpx.prod(arr, axis=None, dtype=None, keepdims=False, policy='seq') -> ndarray | scalar
+```
+
+Product of array elements.
+
+### `min`
+
+```python
+hpx.min(arr, axis=None, keepdims=False, policy='seq') -> ndarray | scalar
+```
+
+Minimum value.
+
+### `max`
+
+```python
+hpx.max(arr, axis=None, keepdims=False, policy='seq') -> ndarray | scalar
+```
+
+Maximum value.
+
+### `mean`
+
+```python
+hpx.mean(arr, axis=None, dtype=None, keepdims=False) -> ndarray | scalar
+```
+
+Arithmetic mean.
+
+### `std`
+
+```python
+hpx.std(arr, axis=None, dtype=None, ddof=0, keepdims=False) -> ndarray | scalar
+```
+
+Standard deviation.
+
+### `var`
+
+```python
+hpx.var(arr, axis=None, dtype=None, ddof=0, keepdims=False) -> ndarray | scalar
+```
+
+Variance.
+
+### `reduce`
+
+```python
+hpx.reduce(arr, op='add', init=None, policy='seq') -> scalar
+```
+
+General parallel reduction with custom operation.
+
+**Parameters:**
+- `arr` - Input array
+- `op` - Reduction operation: `'add'`, `'mul'`, `'min'`, `'max'`
+- `init` - Initial value
+- `policy` - Execution policy
+
+### `reduce_deterministic`
+
+```python
+hpx.reduce_deterministic(arr, op='add', init=None) -> scalar
+```
+
+Deterministic reduction (sequential, reproducible floating-point results).
+
+---
+
+## Sorting and Searching
+
+### `sort`
+
+```python
+hpx.sort(arr, axis=-1, policy='seq') -> ndarray
+```
+
+Return a sorted copy of an array.
+
+**Parameters:**
+- `arr` - Input array
+- `axis` - Axis along which to sort (default: -1, last axis)
+- `policy` - Execution policy
+
+### `stable_sort`
+
+```python
+hpx.stable_sort(arr) -> ndarray
+```
+
+Stable sort preserving order of equal elements.
+
+### `argsort`
+
+```python
+hpx.argsort(arr) -> ndarray
+```
+
+Return indices that would sort an array.
+
+```{note}
+Currently only supports float64 arrays.
+```
+
+### `count`
+
+```python
+hpx.count(arr, value, policy='seq') -> int
+```
+
+Count occurrences of a value.
+
+### `searchsorted`
+
+```python
+hpx.searchsorted(arr, values) -> ndarray
+```
+
+Find insertion points in sorted array.
+
+### `nonzero`
+
+```python
+hpx.nonzero(arr) -> ndarray
+```
+
+Return indices of non-zero elements.
+
+### `argmin`
+
+```python
+hpx.argmin(arr, axis=None) -> int | ndarray
+```
+
+Index of minimum value.
+
+### `argmax`
+
+```python
+hpx.argmax(arr, axis=None) -> int | ndarray
+```
+
+Index of maximum value.
+
+---
+
+## Math Functions
+
+Element-wise mathematical operations (parallel by default).
+
+### Basic Math
 
 | Function | Description |
 |----------|-------------|
-| `init()` | Initialize HPX runtime |
-| `finalize()` | Shutdown HPX runtime |
-| `is_initialized()` | Check if runtime is active |
+| `sqrt(x)` | Square root |
+| `square(x)` | Element-wise square |
+| `abs(x)` | Absolute value |
+| `sign(x)` | Sign function (-1, 0, or 1) |
+| `power(x, y)` | Element-wise power |
+| `clip(x, a_min, a_max)` | Clip values to range |
 
-### Array Creation
-
-| Function | Description |
-|----------|-------------|
-| `array(data)` | Create array from data |
-| `from_numpy(arr)` | Create from NumPy array |
-| `zeros(shape)` | Array of zeros |
-| `ones(shape)` | Array of ones |
-| `empty(shape)` | Uninitialized array |
-| `full(shape, value)` | Array filled with value |
-| `arange(start, stop, step)` | Evenly spaced values |
-| `linspace(start, stop, num)` | Linear spacing |
-
-All creation functions support the `device` parameter:
-- `device='cpu'` - CPU array (default)
-- `device='gpu'` - CUDA GPU array
-- `device='sycl'` - SYCL GPU array
-- `device='auto'` - Best available device
-
-### Parallel Algorithms
+### Exponential and Logarithmic
 
 | Function | Description |
 |----------|-------------|
-| `reduce(arr, op, init)` | Parallel reduction |
-| `transform(arr, func)` | Apply function to elements |
-| `for_each(arr, func)` | Apply function for side effects |
-| `sort(arr)` | Parallel sort |
-| `copy(src, dst)` | Parallel copy |
-| `fill(arr, value)` | Fill with value |
+| `exp(x)` | Exponential (e^x) |
+| `exp2(x)` | Base-2 exponential (2^x) |
+| `log(x)` | Natural logarithm |
+| `log2(x)` | Base-2 logarithm |
+| `log10(x)` | Base-10 logarithm |
 
-### Execution Policies
+### Trigonometric
 
-| Policy | Description |
-|--------|-------------|
-| `seq` | Sequential execution |
-| `par` | Parallel execution |
-| `par_unseq` | Parallel + vectorized |
+| Function | Description |
+|----------|-------------|
+| `sin(x)` | Sine |
+| `cos(x)` | Cosine |
+| `tan(x)` | Tangent |
+| `arcsin(x)` | Inverse sine |
+| `arccos(x)` | Inverse cosine |
+| `arctan(x)` | Inverse tangent |
 
-## GPU Module (`hpxpy.gpu`)
+### Hyperbolic
+
+| Function | Description |
+|----------|-------------|
+| `sinh(x)` | Hyperbolic sine |
+| `cosh(x)` | Hyperbolic cosine |
+| `tanh(x)` | Hyperbolic tangent |
+
+### Rounding
+
+| Function | Description |
+|----------|-------------|
+| `floor(x)` | Round down to integer |
+| `ceil(x)` | Round up to integer |
+| `trunc(x)` | Truncate to integer |
+
+---
+
+## Scan Operations
+
+Cumulative (prefix) operations.
+
+### `cumsum`
+
+```python
+hpx.cumsum(arr, axis=None) -> ndarray
+```
+
+Cumulative sum.
+
+**Example:**
+```python
+arr = hpx.array([1, 2, 3, 4, 5])
+hpx.cumsum(arr)  # [1, 3, 6, 10, 15]
+```
+
+### `cumprod`
+
+```python
+hpx.cumprod(arr, axis=None) -> ndarray
+```
+
+Cumulative product.
+
+### `inclusive_scan`
+
+```python
+hpx.inclusive_scan(arr, op='add') -> ndarray
+```
+
+Inclusive scan with operation.
+
+**Parameters:**
+- `arr` - Input array
+- `op` - Operation: `'add'`, `'mul'`
+
+### `exclusive_scan`
+
+```python
+hpx.exclusive_scan(arr, init, op='add') -> ndarray
+```
+
+Exclusive scan with initial value.
+
+**Parameters:**
+- `arr` - Input array
+- `init` - Initial value (appears as first element)
+- `op` - Operation: `'add'`, `'mul'`
+
+---
+
+## Advanced Algorithms
+
+### `transform_reduce`
+
+```python
+hpx.transform_reduce(arr, transform_op, reduce_op) -> scalar
+```
+
+Combine transform and reduction.
+
+**Parameters:**
+- `arr` - Input array
+- `transform_op` - Transform: `'square'`, `'abs'`, `'identity'`
+- `reduce_op` - Reduction: `'add'`, `'mul'`, `'min'`, `'max'`
+
+**Example:**
+```python
+# Sum of squares
+hpx.transform_reduce(arr, 'square', 'add')
+
+# Sum of absolute values
+hpx.transform_reduce(arr, 'abs', 'add')
+```
+
+### `reduce_by_key`
+
+```python
+hpx.reduce_by_key(keys, values, op='add') -> tuple[ndarray, ndarray]
+```
+
+Reduce values by key groups.
+
+**Returns:** (unique_keys, reduced_values)
+
+### `nth_element`
+
+```python
+hpx.nth_element(arr, n) -> scalar
+```
+
+Find nth smallest element.
+
+### `median`
+
+```python
+hpx.median(arr) -> scalar
+```
+
+Compute the median.
+
+### `percentile`
+
+```python
+hpx.percentile(arr, q) -> scalar
+```
+
+Compute the qth percentile.
+
+---
+
+## Array Manipulation
+
+### `flip`
+
+```python
+hpx.flip(arr) -> ndarray
+```
+
+Reverse the array.
+
+### `roll`
+
+```python
+hpx.roll(arr, shift) -> ndarray
+```
+
+Roll array elements.
+
+### `partition`
+
+```python
+hpx.partition(arr, pivot) -> ndarray
+```
+
+Partition array around pivot value.
+
+### `array_equal`
+
+```python
+hpx.array_equal(a, b) -> bool
+```
+
+Check if two arrays are equal.
+
+### `diff`
+
+```python
+hpx.diff(arr, n=1) -> ndarray
+```
+
+Calculate the n-th discrete difference.
+
+---
+
+## Set Operations
+
+Operations on sorted arrays.
+
+| Function | Description |
+|----------|-------------|
+| `unique(arr)` | Unique elements |
+| `setdiff1d(a, b)` | Elements in a but not in b |
+| `intersect1d(a, b)` | Common elements |
+| `union1d(a, b)` | Union of elements |
+| `setxor1d(a, b)` | Symmetric difference |
+| `includes(a, b)` | Check if a includes all of b |
+| `isin(arr, test)` | Test membership |
+| `merge_sorted(a, b)` | Merge two sorted arrays |
+
+---
+
+## Element-wise Operations
+
+### `maximum`
+
+```python
+hpx.maximum(a, b) -> ndarray
+```
+
+Element-wise maximum of two arrays.
+
+### `minimum`
+
+```python
+hpx.minimum(a, b) -> ndarray
+```
+
+Element-wise minimum of two arrays.
+
+### `where`
+
+```python
+hpx.where(condition, x, y) -> ndarray
+```
+
+Select from x where condition is true, else from y.
+
+**Example:**
+```python
+arr = hpx.arange(10)
+result = hpx.where(arr > 5, arr * 10, arr)
+# [0, 1, 2, 3, 4, 5, 60, 70, 80, 90]
+```
+
+---
+
+## Random Module (`hpx.random`)
+
+Parallel random number generation.
+
+### `seed`
+
+```python
+hpx.random.seed(seed: int) -> None
+```
+
+Set random seed for reproducibility.
+
+### `rand`
+
+```python
+hpx.random.rand(*shape) -> ndarray
+```
+
+Uniform random values in [0, 1).
+
+### `randn`
+
+```python
+hpx.random.randn(*shape) -> ndarray
+```
+
+Standard normal distribution.
+
+### `randint`
+
+```python
+hpx.random.randint(low, high=None, size=None) -> ndarray
+```
+
+Random integers.
+
+### `uniform`
+
+```python
+hpx.random.uniform(low=0.0, high=1.0, size=None) -> ndarray
+```
+
+Uniform distribution over [low, high).
+
+---
+
+## Execution Policies (`hpx.execution`)
+
+Control algorithm parallelization.
+
+| Policy | Usage |
+|--------|-------|
+| `hpx.execution.seq` | Sequential execution |
+| `hpx.execution.par` | Parallel execution (multi-threaded) |
+| `hpx.execution.par_unseq` | Parallel + vectorized (SIMD) |
+
+**Example:**
+```python
+# Pass policy to algorithms that support it
+result = hpx.sum(arr, policy='par')
+result = hpx.sort(arr, policy='par')
+```
+
+---
+
+## GPU Module (`hpx.gpu`)
 
 CUDA GPU support via HPX cuda_executor.
 
@@ -69,12 +733,12 @@ CUDA GPU support via HPX cuda_executor.
 
 ### Array Creation
 
-| Function | Description |
-|----------|-------------|
-| `zeros(shape, device)` | GPU array of zeros |
-| `ones(shape, device)` | GPU array of ones |
-| `full(shape, value, device)` | GPU array with value |
-| `from_numpy(arr, device)` | Transfer from CPU |
+```python
+hpx.gpu.zeros(shape, dtype='float64') -> ndarray
+hpx.gpu.ones(shape, dtype='float64') -> ndarray
+hpx.gpu.full(shape, value, dtype='float64') -> ndarray
+hpx.gpu.from_numpy(arr) -> ndarray
+```
 
 ### Async Operations
 
@@ -85,64 +749,72 @@ CUDA GPU support via HPX cuda_executor.
 | `is_async_enabled()` | Check polling state |
 | `AsyncContext` | Context manager for async ops |
 
-## SYCL Module (`hpxpy.sycl`)
+---
+
+## SYCL Module (`hpx.sycl`)
 
 Cross-platform GPU support via HPX sycl_executor.
 
-### Device Management
+Same interface as GPU module for Intel, AMD, and Apple GPUs.
 
-| Function | Description |
-|----------|-------------|
-| `is_available()` | Check SYCL availability |
-| `device_count()` | Number of SYCL devices |
-| `get_devices()` | List all device info |
-| `get_device(id)` | Get specific device info |
-
-### Array Creation
-
-| Function | Description |
-|----------|-------------|
-| `zeros(shape, device)` | SYCL array of zeros |
-| `ones(shape, device)` | SYCL array of ones |
-| `full(shape, value, device)` | SYCL array with value |
-| `from_numpy(arr, device)` | Transfer from CPU |
-
-### Async Operations
-
-| Function | Description |
-|----------|-------------|
-| `enable_async()` | Enable HPX SYCL polling |
-| `disable_async()` | Disable polling |
-| `AsyncContext` | Context manager for async ops |
+---
 
 ## Distributed Module
 
-### Distributed Arrays
+### Distributed Array Creation
+
+```python
+hpx.distributed_zeros(size, localities) -> ndarray
+hpx.distributed_ones(size, localities) -> ndarray
+hpx.distributed_from_numpy(arr, localities) -> ndarray
+```
+
+### Collective Operations (`hpx.collectives`)
 
 | Function | Description |
 |----------|-------------|
-| `distributed_zeros(size, localities)` | Distributed zero array |
-| `distributed_ones(size, localities)` | Distributed ones array |
-| `distributed_from_numpy(arr, localities)` | Distribute NumPy array |
+| `all_reduce(arr, op='add')` | Reduce across all localities |
+| `broadcast(arr, root=0)` | Broadcast from root |
+| `gather(arr, root=0)` | Gather to root |
+| `scatter(arr, root=0)` | Scatter from root |
+| `barrier()` | Synchronization barrier |
 
-### Collective Operations
+---
 
-| Function | Description |
-|----------|-------------|
-| `all_reduce(arr)` | Reduce across all localities |
-| `broadcast(arr, root)` | Broadcast from root |
-| `gather(arr, root)` | Gather to root |
-| `scatter(arr, root)` | Scatter from root |
-
-## Launcher Module (`hpxpy.launcher`)
+## Launcher Module (`hpx.launcher`)
 
 Multi-locality job launching.
 
-| Function | Description |
-|----------|-------------|
-| `run_distributed(script, localities)` | Launch multi-locality job |
-| `get_locality_id()` | Current locality ID |
-| `get_num_localities()` | Total localities |
+### `run_distributed`
+
+```python
+hpx.launcher.run_distributed(
+    script: str,
+    localities: int,
+    threads_per_locality: int = None,
+    hosts: list[str] = None
+) -> int
+```
+
+Launch a distributed HPXPy job.
+
+### `get_locality_id`
+
+```python
+hpx.launcher.get_locality_id() -> int
+```
+
+Get current locality ID.
+
+### `get_num_localities`
+
+```python
+hpx.launcher.get_num_localities() -> int
+```
+
+Get total number of localities.
+
+---
 
 ## See Also
 
