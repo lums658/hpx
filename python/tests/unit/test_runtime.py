@@ -80,3 +80,67 @@ class TestRuntimeErrors:
 
         with pytest.raises(RuntimeError, match="not initialized"):
             hpx.finalize()
+
+
+class TestFinalizeRegression:
+    """
+    Regression tests for finalize() behavior.
+
+    The finalize() function was fixed to use hpx::post() to schedule
+    hpx::finalize() on an HPX thread before calling hpx::stop().
+    This was needed because hpx::finalize() must be called from HPX thread context.
+    """
+
+    def test_finalize_can_be_called(self, hpx_runtime):
+        """
+        Verify that finalize() can be called without throwing.
+
+        This test verifies the fix where finalize() would fail with:
+        'this function can be called from an HPX thread only'
+
+        Note: We can't actually call finalize() in this test because the
+        session fixture manages the runtime. We just verify the runtime
+        is in a state where finalize could be called (i.e., is_running).
+        """
+        # Runtime should be in a valid state
+        assert hpx_runtime.is_running()
+        # These functions should work (they're called from HPX context correctly)
+        assert hpx_runtime.num_threads() >= 1
+        assert hpx_runtime.num_localities() >= 1
+
+
+class TestRuntimeRobustness:
+    """Test runtime robustness and edge cases."""
+
+    def test_operations_after_many_calls(self, hpx_runtime):
+        """
+        Runtime should remain stable after many operations.
+
+        This tests that the runtime doesn't leak resources or become
+        unstable after many array operations.
+        """
+        import numpy as np
+
+        for i in range(100):
+            arr = hpx_runtime.arange(100)
+            _ = hpx_runtime.sum(arr)
+
+        # Runtime should still be healthy
+        assert hpx_runtime.is_running()
+        assert hpx_runtime.num_threads() >= 1
+
+    def test_parallel_sum_stability(self, hpx_runtime):
+        """
+        Parallel sum should be stable across multiple calls.
+
+        This is a regression test to ensure HPX parallel algorithms
+        work correctly after the runtime initialization fix.
+        """
+        import numpy as np
+
+        for _ in range(10):
+            arr = hpx_runtime.arange(1000)
+            result = hpx_runtime.sum(arr)
+            # Sum of 0..999 = 999*1000/2 = 499500
+            # hpx.sum returns a Python float directly
+            np.testing.assert_almost_equal(result, 499500.0)

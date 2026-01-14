@@ -136,7 +136,8 @@ private:
     }
 
     static py::ssize_t compute_size(std::vector<py::ssize_t> const& shape) {
-        if (shape.empty()) return 0;
+        // 0-dimensional arrays have exactly 1 element (scalar value)
+        // std::accumulate with multiplies and initial value 1 handles this correctly
         return std::accumulate(shape.begin(), shape.end(),
             py::ssize_t{1}, std::multiplies<py::ssize_t>{});
     }

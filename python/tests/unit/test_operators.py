@@ -350,3 +350,158 @@ class TestBroadcastingNumpyComparison:
         result = a * b
         expected = a_np * b_np
         np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+
+class TestZeroDimensionalArrays:
+    """
+    Test 0-dimensional (scalar) array handling.
+
+    Regression tests for the bug where 0-d arrays had size=0 instead of size=1,
+    causing segfaults during broadcasting operations.
+    """
+
+    def test_0d_array_creation(self, hpx_runtime):
+        """0-d array from NumPy scalar should have size=1."""
+        scalar_np = np.array(42.0)
+        assert scalar_np.shape == ()
+        assert scalar_np.size == 1
+
+        scalar_hpx = hpx.from_numpy(scalar_np)
+        assert scalar_hpx.shape == ()
+        assert scalar_hpx.size == 1  # Regression test: was 0, now 1
+
+    def test_0d_to_numpy_roundtrip(self, hpx_runtime):
+        """0-d array should round-trip through to_numpy correctly."""
+        scalar_np = np.array(3.14159)
+        scalar_hpx = hpx.from_numpy(scalar_np)
+        result = scalar_hpx.to_numpy()
+
+        assert result.shape == ()
+        np.testing.assert_almost_equal(result, 3.14159)
+
+    def test_0d_add_1d(self, hpx_runtime):
+        """Broadcast 0-d array (scalar) + 1-d array."""
+        scalar_np = np.array(10.0)
+        arr_np = np.arange(5, dtype=np.float64)
+
+        scalar = hpx.from_numpy(scalar_np)
+        arr = hpx.from_numpy(arr_np)
+
+        result = scalar + arr
+        expected = scalar_np + arr_np
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+    def test_1d_add_0d(self, hpx_runtime):
+        """Broadcast 1-d array + 0-d array (scalar)."""
+        scalar_np = np.array(10.0)
+        arr_np = np.arange(5, dtype=np.float64)
+
+        scalar = hpx.from_numpy(scalar_np)
+        arr = hpx.from_numpy(arr_np)
+
+        result = arr + scalar
+        expected = arr_np + scalar_np
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+    def test_0d_mul_2d(self, hpx_runtime):
+        """Broadcast 0-d array (scalar) * 2-d array."""
+        scalar_np = np.array(2.0)
+        arr_np = np.arange(12, dtype=np.float64).reshape((3, 4))
+
+        scalar = hpx.from_numpy(scalar_np)
+        arr = hpx.from_numpy(arr_np)
+
+        result = scalar * arr
+        expected = scalar_np * arr_np
+
+        assert result.shape == expected.shape
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+    def test_0d_sub_1d(self, hpx_runtime):
+        """Broadcast 0-d - 1-d (order matters for subtraction)."""
+        scalar_np = np.array(100.0)
+        arr_np = np.arange(5, dtype=np.float64)
+
+        scalar = hpx.from_numpy(scalar_np)
+        arr = hpx.from_numpy(arr_np)
+
+        # scalar - arr
+        result = scalar - arr
+        expected = scalar_np - arr_np
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+        # arr - scalar
+        result = arr - scalar
+        expected = arr_np - scalar_np
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+    def test_0d_div_1d(self, hpx_runtime):
+        """Broadcast 0-d / 1-d (order matters for division)."""
+        scalar_np = np.array(100.0)
+        arr_np = np.arange(1, 6, dtype=np.float64)
+
+        scalar = hpx.from_numpy(scalar_np)
+        arr = hpx.from_numpy(arr_np)
+
+        # scalar / arr
+        result = scalar / arr
+        expected = scalar_np / arr_np
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+        # arr / scalar
+        result = arr / scalar
+        expected = arr_np / scalar_np
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+    def test_0d_comparison_broadcast(self, hpx_runtime):
+        """Broadcast 0-d array in comparison operations."""
+        threshold_np = np.array(5.0)
+        arr_np = np.arange(10, dtype=np.float64)
+
+        threshold = hpx.from_numpy(threshold_np)
+        arr = hpx.from_numpy(arr_np)
+
+        result = arr > threshold
+        expected = arr_np > threshold_np
+
+        np.testing.assert_array_equal(result.to_numpy(), expected)
+
+    def test_black_scholes_pattern(self, hpx_runtime):
+        """
+        Regression test for Black-Scholes tutorial pattern.
+
+        The bug manifested when math functions returned 0-d arrays
+        that were then used in operations with 1-d arrays.
+        """
+        # This pattern caused segfaults before the fix
+        sqrt_2pi_np = np.sqrt(2 * np.pi)  # Returns 0-d array
+        x_np = np.linspace(-3, 3, 100)
+
+        sqrt_2pi = hpx.from_numpy(np.array(sqrt_2pi_np))
+        x = hpx.from_numpy(x_np)
+
+        # This operation would segfault with size=0 for 0-d arrays
+        result = x / sqrt_2pi
+        expected = x_np / sqrt_2pi_np
+
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
+
+    def test_chained_0d_operations(self, hpx_runtime):
+        """Multiple operations with 0-d arrays in chain."""
+        a_np = np.array(2.0)
+        b_np = np.array(3.0)
+        c_np = np.arange(5, dtype=np.float64)
+
+        a = hpx.from_numpy(a_np)
+        b = hpx.from_numpy(b_np)
+        c = hpx.from_numpy(c_np)
+
+        # (a + b) * c
+        result = (a + b) * c
+        expected = (a_np + b_np) * c_np
+
+        np.testing.assert_array_almost_equal(result.to_numpy(), expected)
