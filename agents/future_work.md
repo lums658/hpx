@@ -118,6 +118,12 @@ HPX provides 72 parallel algorithms. The following are NOT yet exposed but have 
 - [ ] `adjacent_difference` → `diff()` - Parallel differences
 - [ ] `unique` → `unique()` - Parallel unique elements
 - [ ] `sort_by_key` → Fix `argsort()` - Currently uses NumPy fallback
+- [ ] `reduce` (custom op) → `hpx.reduce(arr, op)` - General reduction with custom binary op
+- [ ] `reduce_deterministic` → `hpx.reduce_deterministic()` - Deterministic FP reduction order
+- [ ] `inclusive_scan` → `hpx.inclusive_scan()`, `cumsum` - Running accumulation (expose directly)
+- [ ] `exclusive_scan` → `hpx.exclusive_scan()` - Prefix sum excluding current element
+- [ ] `transform_reduce` → `hpx.transform_reduce()` - Fused transform+reduce in one pass
+- [ ] `reduce_by_key` → `hpx.reduce_by_key()` - Grouped reductions (enables histogram)
 
 **Tier 2 - Medium Priority:**
 - [ ] `equal` → `array_equal()` - Parallel array comparison
@@ -145,6 +151,8 @@ HPX provides 72 parallel algorithms. The following are NOT yet exposed but have 
 - [ ] `argmin` / `argmax` - Index of extrema (use HPX minmax_element)
 - [ ] `diff` - Differences (use HPX adjacent_difference)
 - [ ] `unique` - Unique elements (use HPX unique)
+- [ ] `reduce` - General ufunc.reduce (use HPX reduce with custom op)
+- [ ] `accumulate` - General ufunc.accumulate (use HPX inclusive_scan with custom op)
 
 **Tier 2 - Good Parallel Benefit:**
 - [ ] `median` - Median value (use HPX nth_element)
