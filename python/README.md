@@ -46,20 +46,47 @@ HPXPy can be built and used directly from the HPX build directory without requir
 
 ### Prerequisites
 
-- CMake 3.18+
-- C++17 compiler (GCC 9+, Clang 10+, or Apple Clang 12+)
-- Python 3.9+ with development headers
-- Boost 1.71+
-- hwloc (optional but recommended)
+#### System Dependencies
+
+| Dependency | Version | Required | Notes |
+|------------|---------|----------|-------|
+| CMake | >= 3.18 | Yes | Build system |
+| C++ Compiler | GCC 9+, Clang 10+, Apple Clang 12+ | Yes | C++17 support required |
+| Python | >= 3.9 | Yes | With development headers |
+| Boost | >= 1.71 | Yes | Required by HPX |
+| hwloc | any | Recommended | Hardware locality detection |
+
+#### Python Dependencies
+
+Install with `pip install -r requirements.txt`:
+
+| Package | Version | Required | Purpose |
+|---------|---------|----------|---------|
+| numpy | >= 1.20.0 | Yes | Array operations, NumPy interop |
+| pybind11 | >= 2.10.0 | Yes | C++/Python bindings |
+| cmake | >= 3.18 | Yes | Python-accessible CMake |
+| pytest | >= 7.0.0 | Testing | Running test suite |
+| jupyter | >= 1.0.0 | Tutorials | Running notebooks |
+| matplotlib | >= 3.5.0 | Tutorials | Visualization |
+| scipy | >= 1.7.0 | Optional | Scientific examples |
+
+#### GPU Dependencies (Optional)
+
+| Backend | Requirements |
+|---------|--------------|
+| CUDA | CUDA Toolkit 11.0+, HPX built with `-DHPX_WITH_CUDA=ON` |
+| SYCL | Intel oneAPI or compatible SYCL runtime, HPX built with `-DHPX_WITH_SYCL=ON` |
 
 **macOS:**
 ```bash
 brew install cmake boost hwloc python
+pip install -r requirements.txt
 ```
 
 **Ubuntu/Debian:**
 ```bash
 sudo apt install cmake libboost-all-dev libhwloc-dev python3-dev python3-pip
+pip install -r requirements.txt
 ```
 
 ### Build Instructions
@@ -120,6 +147,36 @@ cmake .. -DHPXPY_WITH_CUDA=ON -DHPX_DIR=../../build/lib/cmake/HPX
 For SYCL support (requires HPX built with `HPX_WITH_SYCL=ON`):
 ```bash
 cmake .. -DHPXPY_WITH_SYCL=ON -DHPX_DIR=../../build/lib/cmake/HPX
+```
+
+## Tutorials
+
+The `tutorials/` directory contains Jupyter notebooks demonstrating HPXPy features:
+
+| Tutorial | Description |
+|----------|-------------|
+| 01_getting_started | Basic HPX runtime and array operations |
+| 02_parallel_algorithms | Parallel math, sorting, and random numbers |
+| 03_distributed_computing | Distributed arrays and collective operations |
+| 05_gpu_acceleration | CUDA/SYCL GPU support |
+| 06_array_operations | Slicing, reshaping, and indexing |
+| 07_benchmarks | Performance comparisons |
+| 08_monte_carlo | Monte Carlo Pi estimation |
+| 09_black_scholes | Options pricing simulation |
+| 10_image_processing | Image statistics with HPXPy |
+
+To run tutorials:
+```bash
+source build/setup_env.sh
+jupyter notebook tutorials/
+```
+
+## Running Tests
+
+```bash
+cd build
+source setup_env.sh
+pytest ../tests -v
 ```
 
 ## Documentation
