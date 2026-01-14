@@ -54,6 +54,23 @@ auto dispatch_dtype(ndarray const& arr, Func&& func) {
         py::str(arr.dtype()).cast<std::string>());
 }
 
+// Helper to dispatch execution based on policy string
+// Returns the result of calling func with the appropriate execution policy
+template<typename Func>
+auto with_execution_policy(std::string const& policy, Func&& func) {
+    if (policy == "par") {
+        return func(hpx::execution::par);
+    } else if (policy == "par_unseq") {
+        return func(hpx::execution::par_unseq);
+    } else if (policy == "seq") {
+        return func(hpx::execution::seq);
+    } else {
+        throw std::invalid_argument(
+            "Invalid execution policy: '" + policy + "'. "
+            "Valid policies are: 'seq', 'par', 'par_unseq'");
+    }
+}
+
 // Helper: compute linear index from multi-dimensional indices
 inline py::ssize_t compute_linear_index(
     std::vector<py::ssize_t> const& indices,
@@ -87,7 +104,8 @@ inline std::vector<py::ssize_t> compute_reduced_shape(
 }
 
 // Sum reduction (full array)
-py::object sum(std::shared_ptr<ndarray> arr) {
+// policy: "seq" (default, deterministic), "par" (parallel), "par_unseq" (parallel + SIMD)
+py::object sum(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
     if (arr->size() == 0) {
         return py::cast(0.0);
     }
@@ -95,16 +113,12 @@ py::object sum(std::shared_ptr<ndarray> arr) {
     // Release GIL during computation
     py::gil_scoped_release release;
 
-    return dispatch_dtype(*arr, [](auto const* data, py::ssize_t size) -> py::object {
+    return dispatch_dtype(*arr, [&policy](auto const* data, py::ssize_t size) -> py::object {
         using T = std::remove_const_t<std::remove_pointer_t<decltype(data)>>;
 
-        // Sequential reduction for deterministic floating-point results
-        // Compiler SIMD vectorization provides performance
-        T result = hpx::reduce(
-            hpx::execution::seq,
-            data, data + size,
-            T{0}
-        );
+        T result = with_execution_policy(policy, [&](auto exec) {
+            return hpx::reduce(exec, data, data + size, T{0});
+        });
 
         py::gil_scoped_acquire acquire;
         return py::cast(result);
@@ -270,23 +284,20 @@ std::shared_ptr<ndarray> sum_axis(std::shared_ptr<ndarray> arr, int axis, bool k
 }
 
 // Product reduction
-py::object prod(std::shared_ptr<ndarray> arr) {
+// policy: "seq" (default, deterministic), "par" (parallel), "par_unseq" (parallel + SIMD)
+py::object prod(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
     if (arr->size() == 0) {
         return py::cast(1.0);
     }
 
     py::gil_scoped_release release;
 
-    return dispatch_dtype(*arr, [](auto const* data, py::ssize_t size) -> py::object {
+    return dispatch_dtype(*arr, [&policy](auto const* data, py::ssize_t size) -> py::object {
         using T = std::remove_const_t<std::remove_pointer_t<decltype(data)>>;
 
-        // Sequential for deterministic results
-        T result = hpx::reduce(
-            hpx::execution::seq,
-            data, data + size,
-            T{1},
-            std::multiplies<T>{}
-        );
+        T result = with_execution_policy(policy, [&](auto exec) {
+            return hpx::reduce(exec, data, data + size, T{1}, std::multiplies<T>{});
+        });
 
         py::gil_scoped_acquire acquire;
         return py::cast(result);
@@ -294,21 +305,20 @@ py::object prod(std::shared_ptr<ndarray> arr) {
 }
 
 // Minimum reduction
-py::object min(std::shared_ptr<ndarray> arr) {
+// policy: "seq" (default), "par" (parallel), "par_unseq" (parallel + SIMD)
+py::object min(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
     if (arr->size() == 0) {
         throw std::runtime_error("min() arg is an empty sequence");
     }
 
     py::gil_scoped_release release;
 
-    return dispatch_dtype(*arr, [](auto const* data, py::ssize_t size) -> py::object {
+    return dispatch_dtype(*arr, [&policy](auto const* data, py::ssize_t size) -> py::object {
         using T = std::remove_const_t<std::remove_pointer_t<decltype(data)>>;
 
-        // min_element is deterministic, but seq avoids parallel overhead
-        auto result = hpx::min_element(
-            hpx::execution::seq,
-            data, data + size
-        );
+        auto result = with_execution_policy(policy, [&](auto exec) {
+            return hpx::min_element(exec, data, data + size);
+        });
 
         py::gil_scoped_acquire acquire;
         return py::cast(*result);
@@ -316,21 +326,20 @@ py::object min(std::shared_ptr<ndarray> arr) {
 }
 
 // Maximum reduction
-py::object max(std::shared_ptr<ndarray> arr) {
+// policy: "seq" (default), "par" (parallel), "par_unseq" (parallel + SIMD)
+py::object max(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
     if (arr->size() == 0) {
         throw std::runtime_error("max() arg is an empty sequence");
     }
 
     py::gil_scoped_release release;
 
-    return dispatch_dtype(*arr, [](auto const* data, py::ssize_t size) -> py::object {
+    return dispatch_dtype(*arr, [&policy](auto const* data, py::ssize_t size) -> py::object {
         using T = std::remove_const_t<std::remove_pointer_t<decltype(data)>>;
 
-        // max_element is deterministic, but seq avoids parallel overhead
-        auto result = hpx::max_element(
-            hpx::execution::seq,
-            data, data + size
-        );
+        auto result = with_execution_policy(policy, [&](auto exec) {
+            return hpx::max_element(exec, data, data + size);
+        });
 
         py::gil_scoped_acquire acquire;
         return py::cast(*result);
@@ -338,7 +347,8 @@ py::object max(std::shared_ptr<ndarray> arr) {
 }
 
 // Sort (returns new sorted array)
-std::shared_ptr<ndarray> sort(std::shared_ptr<ndarray> arr) {
+// policy: "seq" (default), "par" (parallel), "par_unseq" (parallel + SIMD)
+std::shared_ptr<ndarray> sort(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
     if (arr->ndim() != 1) {
         throw std::runtime_error("sort only supports 1D arrays in Phase 1");
     }
@@ -353,29 +363,31 @@ std::shared_ptr<ndarray> sort(std::shared_ptr<ndarray> arr) {
     char kind = arr->dtype().kind();
     auto itemsize = arr->dtype().itemsize();
 
+    // Helper to sort with execution policy
+    auto do_sort = [&policy, size = arr->size()](auto* ptr) {
+        with_execution_policy(policy, [&](auto exec) {
+            hpx::sort(exec, ptr, ptr + size);
+            return 0;  // Dummy return for with_execution_policy
+        });
+    };
+
     if (kind == 'f') {
         if (itemsize == 8) {
-            auto* ptr = static_cast<double*>(result->data());
-            hpx::sort(hpx::execution::seq, ptr, ptr + arr->size());
+            do_sort(static_cast<double*>(result->data()));
         } else if (itemsize == 4) {
-            auto* ptr = static_cast<float*>(result->data());
-            hpx::sort(hpx::execution::seq, ptr, ptr + arr->size());
+            do_sort(static_cast<float*>(result->data()));
         }
     } else if (kind == 'i') {
         if (itemsize == 8) {
-            auto* ptr = static_cast<int64_t*>(result->data());
-            hpx::sort(hpx::execution::seq, ptr, ptr + arr->size());
+            do_sort(static_cast<int64_t*>(result->data()));
         } else if (itemsize == 4) {
-            auto* ptr = static_cast<int32_t*>(result->data());
-            hpx::sort(hpx::execution::seq, ptr, ptr + arr->size());
+            do_sort(static_cast<int32_t*>(result->data()));
         }
     } else if (kind == 'u') {
         if (itemsize == 8) {
-            auto* ptr = static_cast<uint64_t*>(result->data());
-            hpx::sort(hpx::execution::seq, ptr, ptr + arr->size());
+            do_sort(static_cast<uint64_t*>(result->data()));
         } else if (itemsize == 4) {
-            auto* ptr = static_cast<uint32_t*>(result->data());
-            hpx::sort(hpx::execution::seq, ptr, ptr + arr->size());
+            do_sort(static_cast<uint32_t*>(result->data()));
         }
     } else {
         py::gil_scoped_acquire acquire;
@@ -386,36 +398,47 @@ std::shared_ptr<ndarray> sort(std::shared_ptr<ndarray> arr) {
 }
 
 // Count occurrences of a value
-py::ssize_t count(std::shared_ptr<ndarray> arr, py::object value) {
+// policy: "seq" (default), "par" (parallel), "par_unseq" (parallel + SIMD)
+py::ssize_t count(std::shared_ptr<ndarray> arr, py::object value, std::string const& policy = "seq") {
     char kind = arr->dtype().kind();
     auto itemsize = arr->dtype().itemsize();
 
+    // Helper to count with execution policy
+    auto do_count = [&policy, size = arr->size()](auto const* ptr, auto val) {
+        return with_execution_policy(policy, [&](auto exec) {
+            return hpx::count(exec, ptr, ptr + size, val);
+        });
+    };
+
+    py::gil_scoped_release release;
+
     if (kind == 'f') {
         if (itemsize == 8) {
+            py::gil_scoped_acquire acquire;
             double val = value.cast<double>();
-            py::gil_scoped_release release;
-            auto* ptr = static_cast<double const*>(arr->data());
-            return hpx::count(hpx::execution::seq, ptr, ptr + arr->size(), val);
+            py::gil_scoped_release release2;
+            return do_count(static_cast<double const*>(arr->data()), val);
         } else if (itemsize == 4) {
+            py::gil_scoped_acquire acquire;
             float val = value.cast<float>();
-            py::gil_scoped_release release;
-            auto* ptr = static_cast<float const*>(arr->data());
-            return hpx::count(hpx::execution::seq, ptr, ptr + arr->size(), val);
+            py::gil_scoped_release release2;
+            return do_count(static_cast<float const*>(arr->data()), val);
         }
     } else if (kind == 'i') {
         if (itemsize == 8) {
+            py::gil_scoped_acquire acquire;
             int64_t val = value.cast<int64_t>();
-            py::gil_scoped_release release;
-            auto* ptr = static_cast<int64_t const*>(arr->data());
-            return hpx::count(hpx::execution::seq, ptr, ptr + arr->size(), val);
+            py::gil_scoped_release release2;
+            return do_count(static_cast<int64_t const*>(arr->data()), val);
         } else if (itemsize == 4) {
+            py::gil_scoped_acquire acquire;
             int32_t val = value.cast<int32_t>();
-            py::gil_scoped_release release;
-            auto* ptr = static_cast<int32_t const*>(arr->data());
-            return hpx::count(hpx::execution::seq, ptr, ptr + arr->size(), val);
+            py::gil_scoped_release release2;
+            return do_count(static_cast<int32_t const*>(arr->data()), val);
         }
     }
 
+    py::gil_scoped_acquire acquire;
     throw std::runtime_error("Unsupported dtype for count");
 }
 
@@ -743,6 +766,7 @@ std::shared_ptr<ndarray> where_arr(std::shared_ptr<ndarray> condition,
 void bind_algorithms(py::module_& m) {
     m.def("_sum", &hpxpy::sum,
         py::arg("arr"),
+        py::arg("policy") = "seq",
         R"pbdoc(
             Sum of array elements.
 
@@ -750,6 +774,9 @@ void bind_algorithms(py::module_& m) {
             ----------
             arr : ndarray
                 Input array.
+            policy : str
+                Execution policy: "seq" (sequential, default), "par" (parallel),
+                or "par_unseq" (parallel + SIMD).
 
             Returns
             -------
@@ -781,23 +808,28 @@ void bind_algorithms(py::module_& m) {
 
     m.def("_prod", &hpxpy::prod,
         py::arg("arr"),
-        "Product of array elements.");
+        py::arg("policy") = "seq",
+        "Product of array elements. policy: 'seq', 'par', or 'par_unseq'.");
 
     m.def("_min", &hpxpy::min,
         py::arg("arr"),
-        "Minimum of array elements.");
+        py::arg("policy") = "seq",
+        "Minimum of array elements. policy: 'seq', 'par', or 'par_unseq'.");
 
     m.def("_max", &hpxpy::max,
         py::arg("arr"),
-        "Maximum of array elements.");
+        py::arg("policy") = "seq",
+        "Maximum of array elements. policy: 'seq', 'par', or 'par_unseq'.");
 
     m.def("_sort", &hpxpy::sort,
         py::arg("arr"),
-        "Return a sorted copy of the array.");
+        py::arg("policy") = "seq",
+        "Return a sorted copy of the array. policy: 'seq', 'par', or 'par_unseq'.");
 
     m.def("_count", &hpxpy::count,
         py::arg("arr"), py::arg("value"),
-        "Count occurrences of a value.");
+        py::arg("policy") = "seq",
+        "Count occurrences of a value. policy: 'seq', 'par', or 'par_unseq'.");
 
     // Math functions
     m.def("_sqrt", &hpxpy::sqrt_arr, py::arg("arr"), "Element-wise square root.");

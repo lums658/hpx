@@ -781,7 +781,7 @@ def full(shape, fill_value, dtype=None, device=None):
 # -----------------------------------------------------------------------------
 
 
-def sum(arr, axis=None, dtype=None, keepdims: bool = False):
+def sum(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq"):
     """Sum of array elements.
 
     Parameters
@@ -794,6 +794,11 @@ def sum(arr, axis=None, dtype=None, keepdims: bool = False):
         Type to use for accumulation.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
+    policy : str, default "seq"
+        Execution policy: "seq" (sequential, default), "par" (parallel),
+        or "par_unseq" (parallel + SIMD). Use "par" for large arrays to
+        enable multi-threaded execution. Note: "par" may produce
+        non-deterministic floating-point results due to reduction order.
 
     Returns
     -------
@@ -805,10 +810,10 @@ def sum(arr, axis=None, dtype=None, keepdims: bool = False):
         if keepdims:
             # Full reduction with keepdims: reduce all, then reshape
             import numpy as np
-            result = _sum(arr)
+            result = _sum(arr, policy)
             shape = tuple(1 for _ in arr.shape)
             return from_numpy(np.array(result, dtype=arr.dtype).reshape(shape))
-        return _sum(arr)
+        return _sum(arr, policy)
     elif isinstance(axis, int):
         # Single axis reduction: use native HPX implementation
         return _sum_axis(arr, axis, keepdims)
@@ -821,7 +826,7 @@ def sum(arr, axis=None, dtype=None, keepdims: bool = False):
         return result
 
 
-def prod(arr, axis=None, dtype=None, keepdims: bool = False):
+def prod(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq"):
     """Product of array elements.
 
     Parameters
@@ -834,6 +839,9 @@ def prod(arr, axis=None, dtype=None, keepdims: bool = False):
         Type to use for accumulation.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
+    policy : str, default "seq"
+        Execution policy: "seq" (sequential, default), "par" (parallel),
+        or "par_unseq" (parallel + SIMD).
 
     Returns
     -------
@@ -845,10 +853,10 @@ def prod(arr, axis=None, dtype=None, keepdims: bool = False):
         raise NotImplementedError("axis parameter for prod() not yet implemented")
     if keepdims:
         raise NotImplementedError("keepdims parameter for prod() not yet implemented")
-    return _prod(arr)
+    return _prod(arr, policy)
 
 
-def min(arr, axis=None, keepdims: bool = False):
+def min(arr, axis=None, keepdims: bool = False, policy: str = "seq"):
     """Minimum of array elements.
 
     Parameters
@@ -859,6 +867,9 @@ def min(arr, axis=None, keepdims: bool = False):
         Axis or axes along which to find minimum.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
+    policy : str, default "seq"
+        Execution policy: "seq" (sequential, default), "par" (parallel),
+        or "par_unseq" (parallel + SIMD).
 
     Returns
     -------
@@ -870,10 +881,10 @@ def min(arr, axis=None, keepdims: bool = False):
         raise NotImplementedError("axis parameter for min() not yet implemented")
     if keepdims:
         raise NotImplementedError("keepdims parameter for min() not yet implemented")
-    return _min(arr)
+    return _min(arr, policy)
 
 
-def max(arr, axis=None, keepdims: bool = False):
+def max(arr, axis=None, keepdims: bool = False, policy: str = "seq"):
     """Maximum of array elements.
 
     Parameters
@@ -884,6 +895,9 @@ def max(arr, axis=None, keepdims: bool = False):
         Axis or axes along which to find maximum.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
+    policy : str, default "seq"
+        Execution policy: "seq" (sequential, default), "par" (parallel),
+        or "par_unseq" (parallel + SIMD).
 
     Returns
     -------
@@ -895,10 +909,10 @@ def max(arr, axis=None, keepdims: bool = False):
         raise NotImplementedError("axis parameter for max() not yet implemented")
     if keepdims:
         raise NotImplementedError("keepdims parameter for max() not yet implemented")
-    return _max(arr)
+    return _max(arr, policy)
 
 
-def mean(arr, axis=None, dtype=None, keepdims: bool = False):
+def mean(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq"):
     """Compute the arithmetic mean.
 
     Parameters
@@ -911,6 +925,9 @@ def mean(arr, axis=None, dtype=None, keepdims: bool = False):
         Type to use for computation.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
+    policy : str, default "seq"
+        Execution policy: "seq" (sequential, default), "par" (parallel),
+        or "par_unseq" (parallel + SIMD).
 
     Returns
     -------
@@ -920,7 +937,7 @@ def mean(arr, axis=None, dtype=None, keepdims: bool = False):
     _check_available()
     if axis is not None:
         raise NotImplementedError("axis parameter not yet supported in Phase 1")
-    return _sum(arr) / arr.size
+    return _sum(arr, policy) / arr.size
 
 
 def std(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False):
@@ -989,7 +1006,7 @@ def var(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False):
 # -----------------------------------------------------------------------------
 
 
-def sort(arr, axis: int = -1) -> ndarray:
+def sort(arr, axis: int = -1, policy: str = "seq") -> ndarray:
     """Sort an array.
 
     Parameters
@@ -998,6 +1015,9 @@ def sort(arr, axis: int = -1) -> ndarray:
         Input array.
     axis : int, default -1
         Axis along which to sort. Default is -1 (last axis).
+    policy : str, default "seq"
+        Execution policy: "seq" (sequential, default), "par" (parallel),
+        or "par_unseq" (parallel + SIMD).
 
     Returns
     -------
@@ -1008,7 +1028,7 @@ def sort(arr, axis: int = -1) -> ndarray:
     # Phase 1: only support 1D arrays
     if arr.ndim != 1:
         raise NotImplementedError("Multi-dimensional sort not yet supported in Phase 1")
-    return _sort(arr)
+    return _sort(arr, policy)
 
 
 def argsort(arr, axis: int = -1) -> ndarray:
@@ -1035,7 +1055,7 @@ def argsort(arr, axis: int = -1) -> ndarray:
     return from_numpy(indices, copy=True)
 
 
-def count(arr, value) -> int:
+def count(arr, value, policy: str = "seq") -> int:
     """Count occurrences of a value.
 
     Parameters
@@ -1044,6 +1064,9 @@ def count(arr, value) -> int:
         Input array.
     value : scalar
         Value to count.
+    policy : str, default "seq"
+        Execution policy: "seq" (sequential, default), "par" (parallel),
+        or "par_unseq" (parallel + SIMD).
 
     Returns
     -------
@@ -1051,7 +1074,7 @@ def count(arr, value) -> int:
         Number of occurrences.
     """
     _check_available()
-    return _count(arr, value)
+    return _count(arr, value, policy)
 
 
 # -----------------------------------------------------------------------------
