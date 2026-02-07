@@ -169,6 +169,47 @@ source build/setup_env.sh
 jupyter lab tutorials/
 ```
 
+### Jupyter Notebook with tcmalloc
+
+If HPX was built with tcmalloc (the default memory allocator), you may encounter a `free(): invalid size` crash when calling `hpxpy.init()` in Jupyter. This occurs because Jupyter's libraries initialize with glibc malloc before HPXPy loads tcmalloc, causing allocator conflicts.
+
+**Solution: Preload tcmalloc when starting Jupyter:**
+
+```bash
+# Find tcmalloc library path
+ldd /path/to/hpx/lib/libhpx.so | grep tcmalloc
+
+# Start Jupyter with tcmalloc preloaded
+LD_PRELOAD=/lib64/libtcmalloc_minimal.so.4 jupyter lab tutorials/
+```
+
+**Alternative: Create a dedicated Jupyter kernel:**
+
+```bash
+mkdir -p ~/.local/share/jupyter/kernels/python3-hpx
+
+cat > ~/.local/share/jupyter/kernels/python3-hpx/kernel.json << 'EOF'
+{
+ "argv": [
+  "python",
+  "-m",
+  "ipykernel_launcher",
+  "-f",
+  "{connection_file}"
+ ],
+ "display_name": "Python 3 (HPX)",
+ "language": "python",
+ "env": {
+  "LD_PRELOAD": "/lib64/libtcmalloc_minimal.so.4"
+ }
+}
+EOF
+```
+
+Then select "Python 3 (HPX)" as your kernel in Jupyter.
+
+**Note:** This issue does not affect command-line Python usage because tcmalloc loads early enough to handle all allocations consistently.
+
 ## Examples
 
 The `examples/` directory contains application notebooks demonstrating real-world use cases:
