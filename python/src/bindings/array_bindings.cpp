@@ -271,6 +271,43 @@ void bind_array(py::module_& m) {
                     indices: Tuple of integers and/or slices.
                     value: Scalar or array to assign.
             )pbdoc")
+        // Boolean indexing (like NumPy arr[bool_mask])
+        .def("__getitem__", [](hpxpy::ndarray const& self, std::shared_ptr<hpxpy::ndarray> mask) {
+            return self.getitem_bool_mask(mask);
+        }, py::arg("mask"),
+            R"pbdoc(
+                Boolean indexing: arr[bool_mask].
+
+                Returns a 1D array containing elements where mask is True.
+
+                Args:
+                    mask: Boolean array of same size as self.
+
+                Returns:
+                    1D array of selected elements.
+
+                Example:
+                    >>> arr = hpx.arange(5)
+                    >>> mask = arr > 2
+                    >>> arr[mask]  # Returns elements 3, 4
+            )pbdoc")
+        .def("__setitem__", [](hpxpy::ndarray& self, std::shared_ptr<hpxpy::ndarray> mask, py::object value) {
+            self.setitem_bool_mask(mask, value);
+        }, py::arg("mask"), py::arg("value"),
+            R"pbdoc(
+                Boolean assignment: arr[bool_mask] = value.
+
+                Sets elements where mask is True to the given value.
+
+                Args:
+                    mask: Boolean array of same size as self.
+                    value: Scalar or array to assign.
+
+                Example:
+                    >>> arr = hpx.arange(5)
+                    >>> mask = arr > 2
+                    >>> arr[mask] = 0  # Sets elements 3, 4 to 0
+            )pbdoc")
         // Reshape operations (Phase 8)
         .def("reshape", &hpxpy::ndarray::reshape,
             py::arg("shape"),

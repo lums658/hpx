@@ -59,6 +59,25 @@ option(HPXPY_WITH_TESTS "Build tests" ON)
 option(HPXPY_WITH_BENCHMARKS "Build benchmarks" ON)
 option(HPXPY_WITH_CUDA "Enable CUDA support" OFF)
 option(HPXPY_WITH_SYCL "Enable SYCL support" OFF)
+option(HPXPY_WITH_NATIVE_ARCH "Enable -march=native -mtune=native for CPU-specific optimizations" OFF)
+
+# ------------------------------------------------------------------------------
+# Native architecture optimization
+# ------------------------------------------------------------------------------
+if(HPXPY_WITH_NATIVE_ARCH)
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag("-march=native" HPXPY_HAS_MARCH_NATIVE)
+  check_cxx_compiler_flag("-mtune=native" HPXPY_HAS_MTUNE_NATIVE)
+
+  if(HPXPY_HAS_MARCH_NATIVE)
+    add_compile_options(-march=native)
+    message(STATUS "Enabled -march=native for CPU-specific SIMD instructions")
+  endif()
+  if(HPXPY_HAS_MTUNE_NATIVE)
+    add_compile_options(-mtune=native)
+    message(STATUS "Enabled -mtune=native for CPU-specific tuning")
+  endif()
+endif()
 
 # ------------------------------------------------------------------------------
 # Standard install directories
@@ -70,12 +89,13 @@ include(GNUInstallDirs)
 # ------------------------------------------------------------------------------
 
 # Find HPX — set CMAKE_PREFIX_PATH or HPX_ROOT to the HPX install prefix
-find_package(HPX REQUIRED)
+find_package(HPX QUIET)
 if(NOT HPX_FOUND)
   message(FATAL_ERROR
     "HPX not found. Point CMake at the HPX install prefix:\n"
     "  cmake -DCMAKE_PREFIX_PATH=/path/to/hpx ..\n"
-    "  cmake -DHPX_ROOT=/path/to/hpx ..\n")
+    "  cmake -DHPX_ROOT=/path/to/hpx ..\n"
+    "See the building guide for details.")
 endif()
 message(STATUS "Found HPX: ${HPX_VERSION} at ${HPX_DIR}")
 

@@ -87,25 +87,30 @@ public:
     // Check if this is a view (references external data)
     bool is_view() const { return external_data_ != nullptr; }
 
-    // Convert to NumPy array (zero-copy view when possible)
+    // Convert to NumPy array (always zero-copy)
+    // Uses a capsule to ensure the ndarray stays alive while numpy uses the data
     py::array to_numpy() const {
         if (external_data_) {
             if (data_owner_) {
-                // This is a slice view - we need to return a contiguous copy
-                // because NumPy can't keep an arbitrary C++ shared_ptr alive.
-                // The slice may have non-contiguous strides from step slicing.
-                py::array result(dtype_, shape_);
-                copy_to_contiguous(result.mutable_data(), shape_, strides_,
-                    external_data_, dtype_.itemsize());
-                return result;
+                // This is a slice view of another hpxpy array.
+                // Keep this ndarray alive (which keeps data_owner_ alive).
+                auto* self_ptr = const_cast<ndarray*>(this);
+                auto self = self_ptr->shared_from_this();
+                py::capsule base(new std::shared_ptr<ndarray>(self),
+                    [](void* ptr) { delete static_cast<std::shared_ptr<ndarray>*>(ptr); });
+                return py::array(dtype_, shape_, strides_, external_data_, base);
             } else {
-                // Return a view of the external data, keeping the original numpy array alive
+                // Return a view of the external numpy data, keeping the original numpy array alive
                 return py::array(dtype_, shape_, strides_, external_data_, np_base_);
             }
         } else {
-            // We own the data - create a copy for safety
-            // (the ndarray could be destroyed while numpy array is still in use)
-            return py::array(dtype_, shape_, strides_, data_.data());
+            // We own the data - return a zero-copy view.
+            // Use a capsule to ensure the ndarray stays alive while numpy uses the data.
+            auto* self_ptr = const_cast<ndarray*>(this);
+            auto self = self_ptr->shared_from_this();
+            py::capsule base(new std::shared_ptr<ndarray>(self),
+                [](void* ptr) { delete static_cast<std::shared_ptr<ndarray>*>(ptr); });
+            return py::array(dtype_, shape_, strides_, data_.data(), base);
         }
     }
 
@@ -746,6 +751,103 @@ public:
         // Target is an ndarray view - assign values to it
         auto target_arr = target.cast<std::shared_ptr<ndarray>>();
         assign_to_view(target_arr, value);
+    }
+
+    // Boolean indexing: arr[bool_mask] - returns 1D array of elements where mask is True
+    std::shared_ptr<ndarray> getitem_bool_mask(std::shared_ptr<ndarray> const& mask) const {
+        if (mask->dtype().kind() != 'b') {
+            throw std::runtime_error("Boolean indexing requires a boolean array mask");
+        }
+        if (mask->size() != size_) {
+            throw std::runtime_error("Boolean mask size must match array size");
+        }
+
+        // Count True values
+        bool const* mask_data = mask->typed_data<bool>();
+        py::ssize_t count = 0;
+        for (py::ssize_t i = 0; i < size_; ++i) {
+            if (mask_data[i]) ++count;
+        }
+
+        // Create result array
+        auto result = std::make_shared<ndarray>(std::vector<py::ssize_t>{count}, dtype_);
+
+        // Copy matching elements
+        char const* src = static_cast<char const*>(data());
+        char* dst = static_cast<char*>(result->data());
+        py::ssize_t itemsize = dtype_.itemsize();
+        py::ssize_t dst_idx = 0;
+
+        for (py::ssize_t i = 0; i < size_; ++i) {
+            if (mask_data[i]) {
+                std::memcpy(dst + dst_idx * itemsize, src + i * itemsize, itemsize);
+                ++dst_idx;
+            }
+        }
+
+        return result;
+    }
+
+    // Boolean indexing: arr[bool_mask] = value - sets elements where mask is True
+    void setitem_bool_mask(std::shared_ptr<ndarray> const& mask, py::object value) {
+        if (mask->dtype().kind() != 'b') {
+            throw std::runtime_error("Boolean indexing requires a boolean array mask");
+        }
+        if (mask->size() != size_) {
+            throw std::runtime_error("Boolean mask size must match array size");
+        }
+
+        bool const* mask_data = mask->typed_data<bool>();
+        char* dst = static_cast<char*>(data());
+        py::ssize_t itemsize = dtype_.itemsize();
+        char kind = dtype_.kind();
+
+        if (py::isinstance<py::int_>(value) || py::isinstance<py::float_>(value) ||
+            py::isinstance<py::bool_>(value)) {
+            // Scalar assignment
+            for (py::ssize_t i = 0; i < size_; ++i) {
+                if (mask_data[i]) {
+                    char* elem_ptr = dst + i * itemsize;
+                    if (kind == 'f') {
+                        double v = value.cast<double>();
+                        if (itemsize == 8) {
+                            *reinterpret_cast<double*>(elem_ptr) = v;
+                        } else if (itemsize == 4) {
+                            *reinterpret_cast<float*>(elem_ptr) = static_cast<float>(v);
+                        }
+                    } else if (kind == 'i') {
+                        int64_t v = value.cast<int64_t>();
+                        if (itemsize == 8) {
+                            *reinterpret_cast<int64_t*>(elem_ptr) = v;
+                        } else if (itemsize == 4) {
+                            *reinterpret_cast<int32_t*>(elem_ptr) = static_cast<int32_t>(v);
+                        }
+                    } else if (kind == 'u') {
+                        uint64_t v = value.cast<uint64_t>();
+                        if (itemsize == 8) {
+                            *reinterpret_cast<uint64_t*>(elem_ptr) = v;
+                        } else if (itemsize == 4) {
+                            *reinterpret_cast<uint32_t*>(elem_ptr) = static_cast<uint32_t>(v);
+                        }
+                    } else if (kind == 'b') {
+                        *reinterpret_cast<bool*>(elem_ptr) = value.cast<bool>();
+                    }
+                }
+            }
+        } else if (py::isinstance<ndarray>(value)) {
+            // Array assignment - source array must have same count as True values
+            auto src_arr = value.cast<std::shared_ptr<ndarray>>();
+            char const* src = static_cast<char const*>(src_arr->data());
+            py::ssize_t src_idx = 0;
+            for (py::ssize_t i = 0; i < size_; ++i) {
+                if (mask_data[i]) {
+                    std::memcpy(dst + i * itemsize, src + src_idx * itemsize, itemsize);
+                    ++src_idx;
+                }
+            }
+        } else {
+            throw std::runtime_error("Boolean assignment value must be a scalar or array");
+        }
     }
 
 private:
