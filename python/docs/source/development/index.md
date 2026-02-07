@@ -18,12 +18,13 @@ cd hpx/python
 # Install all dependencies (build + test + notebooks)
 pip install -r requirements.txt
 
-# Build (point CMAKE_PREFIX_PATH at your HPX install)
+# Build and install (point CMAKE_PREFIX_PATH at your HPX install)
 mkdir build && cd build
-cmake -DCMAKE_PREFIX_PATH=/path/to/hpx ..
-make -j8
+cmake -DCMAKE_PREFIX_PATH=$HOME/usr/local/hpx ..
+cmake --build . -j8
+cmake --install .
 
-# Activate runtime environment
+# Set HPX library path
 source setup_env.sh
 ```
 
@@ -54,7 +55,7 @@ python/
 ## Running Tests
 
 ```bash
-# Make sure the environment is active
+# Make sure the HPX library path is set
 source build/setup_env.sh
 
 # Run all tests (from python/ directory)

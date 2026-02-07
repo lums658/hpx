@@ -7,8 +7,6 @@
 
 HPX_PREFIX="@HPX_PREFIX@"
 HPX_LIB_DIR="@_hpx_lib_dir@"
-HPXPY_BUILD_DIR="@CMAKE_CURRENT_BINARY_DIR@"
-HPXPY_SOURCE_DIR="@CMAKE_CURRENT_SOURCE_DIR@"
 
 # Set library paths so the HPX shared libraries can be found at runtime
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -16,9 +14,6 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 else
     export LD_LIBRARY_PATH="$HPX_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 fi
-
-# Set Python path (build dir for _core.so, source dir for hpxpy/*.py)
-export PYTHONPATH="$HPXPY_BUILD_DIR:$HPXPY_SOURCE_DIR${PYTHONPATH:+:$PYTHONPATH}"
 
 echo "HPXPy environment configured"
 echo "  HPX prefix: $HPX_PREFIX"

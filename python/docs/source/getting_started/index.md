@@ -19,27 +19,28 @@ pip install hpxpy
 ### Building from Source
 
 HPXPy builds against an **installed** HPX library. You point CMake at the HPX
-install prefix:
+install prefix, then install hpxpy into your Python environment:
 
 ```bash
 # Ensure Python has build deps
 pip install numpy pybind11
 
-# Build HPXPy (point at your HPX install prefix)
+# Build and install HPXPy
 cd hpx/python
 mkdir build && cd build
-cmake -DCMAKE_PREFIX_PATH=/path/to/hpx ..
-make -j8
+cmake -DCMAKE_PREFIX_PATH=$HOME/usr/local/hpx ..
+cmake --build . -j8
+cmake --install .
 
-# Set up environment and test
+# Set HPX library path and test
 source setup_env.sh
 python -c "import hpxpy as hpx; hpx.init(); print('HPXPy works!'); hpx.finalize()"
 ```
 
 See **[Building from Source](building)** for detailed instructions including:
-- Prerequisites and compiler requirements
+- Building HPX itself
+- HPXPy build and install
 - GPU support (CUDA/SYCL)
-- Installation to site-packages
 - Troubleshooting
 
 ## Quickstart

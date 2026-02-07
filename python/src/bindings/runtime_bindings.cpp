@@ -44,7 +44,12 @@ void init(py::object num_threads_obj, std::vector<std::string> const& config) {
         args.push_back("--hpx:threads=" + std::to_string(num_threads));
     }
 
-    // Add user-provided configuration
+    // Enable idle backoff so worker threads sleep when there is no work.
+    // Without this, HPX threads busy-spin at 100% CPU even when idle,
+    // which is undesirable for interactive / notebook usage.
+    args.push_back("--hpx:ini=hpx.max_idle_backoff_time=1000");
+
+    // Add user-provided configuration (can override the defaults above)
     for (auto const& cfg : config) {
         args.push_back(cfg);
     }

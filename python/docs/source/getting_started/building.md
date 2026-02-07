@@ -1,155 +1,187 @@
-# Building HPXPy from Source
+# Building from Source
 
-This guide covers building HPXPy against an **installed** HPX library.
+This guide covers building HPX and HPXPy from source.
 
 ## Prerequisites
 
 ### System Dependencies
 
 - CMake 3.18+
-- C++17 compiler (GCC 9+, Clang 10+, or Apple Clang 12+)
+- C++ compiler: GCC 9+, Clang 10+, or Apple Clang 12+
 - Python 3.9+ with development headers
+- Boost (HPX dependency)
+- hwloc (HPX dependency, optional but recommended)
 
 **macOS:**
 
 ```bash
-brew install cmake python
+brew install cmake gcc boost hwloc python
 ```
 
 **Ubuntu/Debian:**
 
 ```bash
-sudo apt install cmake python3-dev python3-venv
+sudo apt install cmake g++ libboost-all-dev libhwloc-dev python3-dev python3-venv
 ```
 
-### HPX (Installed)
+### Python Environment
 
-HPXPy requires HPX to be built and **installed** at a known prefix. For example,
-to install HPX to `~/usr/local/hpx`:
-
-```bash
-git clone https://github.com/STEllAR-GROUP/hpx.git
-cd hpx && mkdir build && cd build
-
-cmake .. \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=~/usr/local/hpx \
-    -DHPX_WITH_FETCH_ASIO=ON \
-    -DHPX_WITH_EXAMPLES=OFF \
-    -DHPX_WITH_TESTS=OFF
-
-make -j$(nproc)      # Linux
-make -j$(sysctl -n hw.ncpu)  # macOS
-
-make install
-```
-
-After installation, the HPX CMake config files will be at
-`<prefix>/lib/cmake/HPX/HPXConfig.cmake`.
-
-## Build Instructions
-
-### Step 1: Python Environment
-
-Your active Python must have NumPy and pybind11 installed. Use whichever
-environment you prefer (venv, conda, system Python):
+Set up a Python virtual environment and install dependencies:
 
 ```bash
-pip install numpy pybind11
-```
-
-Or install all dependencies (including test and notebook extras):
-
-```bash
-pip install -r requirements.txt   # from hpx/python/
+python3 -m venv ~/.venv
+source ~/.venv/bin/activate
+pip install -r hpx/python/requirements.txt
 ```
 
 ```{important}
-CMake's `find_package(Python)` discovers whichever Python is active at
-configure time. Make sure the Python environment you want to use is active
-**before** running `cmake`.
+CMake discovers whichever Python is active at configure time. Make sure your
+virtual environment is active **before** running `cmake` for both HPX and HPXPy.
 ```
 
-### Step 2: Configure with CMake
+---
 
-Point CMake at the HPX install prefix using `CMAKE_PREFIX_PATH`:
+## Step 1: Build and Install HPX
+
+HPXPy requires HPX to be built and **installed** at a known prefix.
 
 ```bash
+git clone https://github.com/STEllAR-GROUP/hpx.git
+cd hpx
 mkdir build && cd build
 
-cmake -DCMAKE_PREFIX_PATH=~/usr/local/hpx ..
+cmake .. \
+    -DCMAKE_CXX_COMPILER=/opt/homebrew/bin/g++-15 \
+    -DCMAKE_INSTALL_PREFIX=$HOME/usr/local/hpx \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DHPX_WITH_CXX_STANDARD=20 \
+    -DHPX_WITH_FETCH_ASIO=ON \
+    -DHPX_WITH_FETCH_STDEXEC=ON \
+    -DHPX_WITH_EXAMPLES=ON \
+    -DHPX_WITH_TESTS=ON
+
+cmake --build . -j8
+cmake --install .
 ```
+
+### HPX CMake Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `CMAKE_CXX_COMPILER` | C++ compiler (must match across HPX and HPXPy) | System default |
+| `CMAKE_INSTALL_PREFIX` | Where to install HPX | `/usr/local` |
+| `CMAKE_BUILD_TYPE` | `Release`, `Debug`, `RelWithDebInfo` | |
+| `HPX_WITH_CXX_STANDARD` | C++ standard: `17`, `20`, `23` | `17` |
+| `HPX_WITH_FETCH_ASIO` | Download Asio instead of using system version | `OFF` |
+| `HPX_WITH_FETCH_STDEXEC` | Download stdexec (P2300 reference impl) | `OFF` |
+| `HPX_WITH_EXAMPLES` | Build HPX examples | `ON` |
+| `HPX_WITH_TESTS` | Build HPX test suite | `ON` |
+| `HPX_WITH_CUDA` | Enable CUDA support | `OFF` |
+
+After installation, HPX CMake config files will be at
+`<prefix>/lib/cmake/HPX/HPXConfig.cmake`.
+
+---
+
+## Step 2: Build and Install HPXPy
+
+### Configure
+
+From the `hpx/python/` directory, point CMake at the HPX install prefix:
+
+```bash
+cd hpx/python
+mkdir build && cd build
+cmake -DCMAKE_PREFIX_PATH=$HOME/usr/local/hpx ..
+```
+
+HPXPy's CMake automatically:
+- **Detects the compiler** HPX was built with (from `HPXConfig.cmake`)
+- **Matches the C++ standard** HPX uses
+- **Checks ABI compatibility** between the compiler and HPX
 
 You should see output like:
 
 ```
+-- Auto-detected HPX compiler: /opt/homebrew/bin/g++-15
 -- Found HPX: 2.0.0 at /Users/you/usr/local/hpx/lib/cmake/HPX
--- HPX prefix: /Users/you/usr/local/hpx
--- HPX lib dir: /Users/you/usr/local/hpx/lib
--- Found Python: 3.13.7 at /path/to/python/.venv/bin/python
--- Found NumPy: 2.4.1
+-- C++ standard: 20 (from HPX)
+-- Found Python: 3.12.11 at /Users/you/.venv/bin/python
+-- Found NumPy: 2.2.6
 -- Found pybind11: 2.13.6
 ```
 
-Verify that:
-- **HPX prefix** points to your HPX install
-- **Python** points to your **venv** Python (not the system Python)
-- **NumPy** and **pybind11** are found
-
-### Step 3: Build
+### Build
 
 ```bash
-make -j$(nproc)      # Linux
-make -j$(sysctl -n hw.ncpu)  # macOS
+cmake --build . -j8
 ```
 
-This compiles the `_core` extension module and copies it into the source tree's
-`hpxpy/` directory for development use.
+### Install
 
-### Step 4: Set Up the Runtime Environment
+Install hpxpy into the active Python environment's site-packages:
 
-CMake generates a `setup_env.sh` in the build directory. Source it to configure
-library paths and `PYTHONPATH`:
+```bash
+cmake --install .
+```
+
+This installs:
+- `_core.so` (compiled C++ extension) → `<site-packages>/hpxpy/`
+- `hpxpy/*.py` (Python wrapper) → `<site-packages>/hpxpy/`
+
+The installed module has RPATH set to the HPX lib directory, so it finds HPX
+shared libraries at runtime.
+
+### Set Up Runtime Environment
+
+CMake generates a `setup_env.sh` in the build directory. Source it so the HPX
+shared libraries can be found at runtime:
 
 ```bash
 source setup_env.sh
 ```
 
-This sets:
-- `DYLD_LIBRARY_PATH` (macOS) or `LD_LIBRARY_PATH` (Linux) to find HPX shared
-  libraries
-- `PYTHONPATH` to include the build and source directories so `import hpxpy`
-  works
+This sets `DYLD_LIBRARY_PATH` (macOS) or `LD_LIBRARY_PATH` (Linux) to include
+the HPX lib directory. No `PYTHONPATH` manipulation is needed — after
+`cmake --install`, Python finds hpxpy in site-packages automatically.
 
-### Step 5: Verify
+### Verify
 
 ```bash
 python -c "import hpxpy as hpx; hpx.init(); print('HPXPy works!'); hpx.finalize()"
 ```
 
+---
+
 ## Quick Reference
 
-Assuming HPX is installed at some prefix (e.g. `~/usr/local/hpx`):
-
 ```bash
-cd hpx/python
+# 1. Build and install HPX
+cd hpx && mkdir build && cd build
+cmake .. \
+    -DCMAKE_CXX_COMPILER=/opt/homebrew/bin/g++-15 \
+    -DCMAKE_INSTALL_PREFIX=$HOME/usr/local/hpx \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DHPX_WITH_CXX_STANDARD=20 \
+    -DHPX_WITH_FETCH_ASIO=ON \
+    -DHPX_WITH_FETCH_STDEXEC=ON
+cmake --build . -j8
+cmake --install .
 
-# Ensure Python deps are installed
-pip install numpy pybind11
+# 2. Build and install HPXPy
+cd hpx/python && mkdir build && cd build
+cmake -DCMAKE_PREFIX_PATH=$HOME/usr/local/hpx ..
+cmake --build . -j8
+cmake --install .
 
-# Build
-mkdir build && cd build
-cmake -DCMAKE_PREFIX_PATH=~/usr/local/hpx ..
-make -j8
-
-# Use
+# 3. Use
 source setup_env.sh
 python -c "import hpxpy as hpx; hpx.init(); print(hpx.sum(hpx.arange(100))); hpx.finalize()"
 ```
 
 ## Running Jupyter Notebooks
 
-After building and sourcing the environment:
+After building, installing, and sourcing the environment:
 
 ```bash
 source build/setup_env.sh
@@ -157,35 +189,9 @@ cd tutorials    # or examples
 jupyter lab
 ```
 
-The notebooks can `import hpxpy` because `PYTHONPATH` is set by `setup_env.sh`.
-
 ```{tip}
-If you launch VS Code, JupyterLab, or any other tool from the same terminal
-where you sourced `setup_env.sh`, it will inherit the environment and hpxpy
-will be importable.
-```
-
-## Installation (Optional)
-
-To install hpxpy into the active Python environment's site-packages:
-
-```bash
-cd build
-cmake --install .
-```
-
-This installs:
-- `_core.so` → `<site-packages>/hpxpy/`
-- `hpxpy/*.py` → `<site-packages>/hpxpy/`
-
-The installed module has RPATH set to the HPX lib directory, so it finds HPX
-at runtime without `LD_LIBRARY_PATH`.
-
-You can override the install location:
-
-```bash
-cmake -DHPXPY_INSTALL_PYTHONDIR=/custom/path ..
-cmake --install .
+Launch Jupyter from a terminal where you've sourced `setup_env.sh` so it
+inherits the HPX library path.
 ```
 
 ## GPU Support (Optional)
@@ -195,7 +201,7 @@ cmake --install .
 Requires HPX built with `HPX_WITH_CUDA=ON` and the CUDA toolkit:
 
 ```bash
-cmake -DCMAKE_PREFIX_PATH=~/usr/local/hpx -DHPXPY_WITH_CUDA=ON ..
+cmake -DCMAKE_PREFIX_PATH=$HOME/usr/local/hpx -DHPXPY_WITH_CUDA=ON ..
 ```
 
 ### SYCL
@@ -203,29 +209,18 @@ cmake -DCMAKE_PREFIX_PATH=~/usr/local/hpx -DHPXPY_WITH_CUDA=ON ..
 Requires HPX built with `HPX_WITH_SYCL=ON` and a SYCL compiler:
 
 ```bash
-cmake -DCMAKE_PREFIX_PATH=~/usr/local/hpx -DHPXPY_WITH_SYCL=ON ..
+cmake -DCMAKE_PREFIX_PATH=$HOME/usr/local/hpx -DHPXPY_WITH_SYCL=ON ..
 ```
 
-## Directory Structure After Build
+## HPXPy CMake Options
 
-```
-hpx/
-├── python/
-│   ├── .venv/                    # Python virtual environment
-│   ├── requirements.txt          # Python dependencies
-│   ├── hpxpy/                    # Python package
-│   │   ├── __init__.py
-│   │   ├── _core.cpython-*.so    # ← copied here by post-build step
-│   │   └── ...
-│   ├── build/                    # CMake build directory
-│   │   ├── _core.cpython-*.so    # Compiled extension
-│   │   ├── setup_env.sh          # ← generated by CMake
-│   │   └── ...
-│   ├── tutorials/                # Jupyter notebooks
-│   ├── examples/                 # Example notebooks
-│   └── tests/                    # Test suite
-└── ...
-```
+| Option | Description | Default |
+|--------|-------------|---------|
+| `CMAKE_PREFIX_PATH` | HPX install prefix | *(required)* |
+| `HPXPY_WITH_CUDA` | Enable CUDA GPU support | `OFF` |
+| `HPXPY_WITH_SYCL` | Enable SYCL GPU support | `OFF` |
+| `HPXPY_WITH_TESTS` | Build test targets | `ON` |
+| `HPXPY_INSTALL_PYTHONDIR` | Override Python install directory | auto-detected |
 
 ## Troubleshooting
 
@@ -237,49 +232,59 @@ If CMake picks up a Python that lacks NumPy or pybind11:
 -- Found Python: 3.14.2 at /usr/bin/python3
 ```
 
-**Fix:** Make sure the correct Python environment is active *before* running cmake:
+**Fix:** Activate your virtual environment *before* running cmake:
 
 ```bash
-which python  # verify this is the Python you want
-python -c "import numpy; import pybind11"  # verify deps
-cmake -DCMAKE_PREFIX_PATH=~/usr/local/hpx ..
+source ~/.venv/bin/activate
+which python    # verify
+rm -rf build && mkdir build && cd build
+cmake -DCMAKE_PREFIX_PATH=$HOME/usr/local/hpx ..
 ```
-
-If you already configured with the wrong Python, delete `CMakeCache.txt` (or
-the entire build directory) and reconfigure.
 
 ### "Module not found: hpxpy"
 
-Ensure you sourced the environment:
+Make sure you ran `cmake --install .` and that the install went to your
+active Python's site-packages. Check:
+
+```bash
+python -c "import sysconfig; print(sysconfig.get_path('platlib'))"
+```
+
+### "Library not found: libhpx"
+
+Source the environment script:
 
 ```bash
 source build/setup_env.sh
 ```
 
-### "Library not found: libhpx"
-
-The `setup_env.sh` script sets `DYLD_LIBRARY_PATH`/`LD_LIBRARY_PATH` for you.
-If you're running without it, set the library path manually:
+Or set the library path manually:
 
 ```bash
-# Linux
-export LD_LIBRARY_PATH=~/usr/local/hpx/lib:$LD_LIBRARY_PATH
-
 # macOS
-export DYLD_LIBRARY_PATH=~/usr/local/hpx/lib:$DYLD_LIBRARY_PATH
+export DYLD_LIBRARY_PATH=$HOME/usr/local/hpx/lib:$DYLD_LIBRARY_PATH
+
+# Linux
+export LD_LIBRARY_PATH=$HOME/usr/local/hpx/lib:$LD_LIBRARY_PATH
 ```
 
 ### CMake can't find HPX
 
-Point CMake at the HPX install prefix (the directory containing `lib/`, `include/`, etc.):
+Point CMake at the HPX install prefix:
 
 ```bash
-cmake -DCMAKE_PREFIX_PATH=/path/to/hpx/install ..
+cmake -DCMAKE_PREFIX_PATH=$HOME/usr/local/hpx ..
 ```
+
+### ABI mismatch error
+
+HPX and HPXPy must be built with the same compiler and standard library.
+HPXPy auto-detects the compiler from HPX, but if you override it with
+`-DCMAKE_CXX_COMPILER`, make sure it matches what HPX was built with.
 
 ### NumPy or pybind11 not found
 
-Install them in your active venv:
+Install them in your active environment:
 
 ```bash
 pip install -r requirements.txt

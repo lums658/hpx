@@ -1,12 +1,7 @@
 # HPXPy Documentation Configuration
 # Sphinx configuration file
 
-import os
-import sys
 from datetime import datetime
-
-# Add hpxpy to path for autodoc (when available)
-sys.path.insert(0, os.path.abspath("../../"))
 
 # -- Project information -----------------------------------------------------
 project = "HPXPy"
@@ -17,18 +12,14 @@ release = "0.1.0-dev"
 
 # -- General configuration ---------------------------------------------------
 extensions = [
-    # Core Sphinx
-    "sphinx.ext.autodoc",
-    "sphinx.ext.autosummary",
-    "sphinx.ext.viewcode",
-    "sphinx.ext.intersphinx",
-    "sphinx.ext.napoleon",
-
     # Markdown
     "myst_parser",
 
-    # Notebooks
+    # Notebooks (rendered without execution)
     "nbsphinx",
+
+    # Cross-references to Python/NumPy docs
+    "sphinx.ext.intersphinx",
 
     # UI enhancements
     "sphinx_copybutton",
@@ -68,28 +59,6 @@ myst_heading_anchors = 3
 # -- nbsphinx configuration --------------------------------------------------
 nbsphinx_execute = "never"  # Don't execute notebooks during build
 nbsphinx_allow_errors = True
-
-# -- Autodoc configuration ---------------------------------------------------
-autodoc_default_options = {
-    "members": True,
-    "member-order": "bysource",
-    "special-members": "__init__",
-    "undoc-members": True,
-    "exclude-members": "__weakref__",
-}
-
-autodoc_typehints = "description"
-autodoc_typehints_description_target = "documented"
-
-# Napoleon settings (NumPy-style docstrings)
-napoleon_google_docstring = False
-napoleon_numpy_docstring = True
-napoleon_include_init_with_doc = True
-napoleon_use_param = True
-napoleon_use_rtype = True
-
-# -- Autosummary configuration -----------------------------------------------
-autosummary_generate = True
 
 # -- Intersphinx configuration -----------------------------------------------
 intersphinx_mapping = {
