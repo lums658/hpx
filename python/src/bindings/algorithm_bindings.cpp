@@ -321,12 +321,16 @@ py::object min(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") 
         using T = std::remove_const_t<std::remove_pointer_t<decltype(data)>>;
 
         // Release GIL during HPX computation
+        // Note: par_unseq triggers a __restrict__ bug in HPX's unseq/loop.hpp
+        // with GCC 15 for min/max_element, so we use par instead.
         T const* result;
         {
             py::gil_scoped_release release;
-            result = with_execution_policy(policy, [&](auto exec) {
-                return hpx::min_element(exec, data, data + size);
-            });
+            if (policy == "par" || policy == "par_unseq") {
+                result = hpx::min_element(hpx::execution::par, data, data + size);
+            } else {
+                result = hpx::min_element(hpx::execution::seq, data, data + size);
+            }
         }
 
         return py::cast(*result);
@@ -348,9 +352,11 @@ py::object max(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") 
         T const* result;
         {
             py::gil_scoped_release release;
-            result = with_execution_policy(policy, [&](auto exec) {
-                return hpx::max_element(exec, data, data + size);
-            });
+            if (policy == "par" || policy == "par_unseq") {
+                result = hpx::max_element(hpx::execution::par, data, data + size);
+            } else {
+                result = hpx::max_element(hpx::execution::seq, data, data + size);
+            }
         }
 
         return py::cast(*result);
@@ -686,10 +692,10 @@ py::ssize_t argmin(std::shared_ptr<ndarray> arr, std::string const& policy = "se
 
     py::gil_scoped_release release;
     double const* result;
-    if (policy == "par") {
+    // Note: par_unseq triggers a __restrict__ bug in HPX's unseq/loop.hpp
+    // with GCC 15 for min/max_element, so we fall back to par.
+    if (policy == "par" || policy == "par_unseq") {
         result = hpx::min_element(hpx::execution::par, data, data + size);
-    } else if (policy == "par_unseq") {
-        result = hpx::min_element(hpx::execution::par_unseq, data, data + size);
     } else {
         result = hpx::min_element(hpx::execution::seq, data, data + size);
     }
@@ -706,10 +712,8 @@ py::ssize_t argmax(std::shared_ptr<ndarray> arr, std::string const& policy = "se
 
     py::gil_scoped_release release;
     double const* result;
-    if (policy == "par") {
+    if (policy == "par" || policy == "par_unseq") {
         result = hpx::max_element(hpx::execution::par, data, data + size);
-    } else if (policy == "par_unseq") {
-        result = hpx::max_element(hpx::execution::par_unseq, data, data + size);
     } else {
         result = hpx::max_element(hpx::execution::seq, data, data + size);
     }

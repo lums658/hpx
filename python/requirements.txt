@@ -1,19 +1,23 @@
 # HPXPy Python Dependencies
 # =========================
+#
 # Install with: pip install -r requirements.txt
+#
+# These are the Python packages needed to BUILD and USE hpxpy.
+# You must install these in the same Python environment (venv recommended)
+# that you will use to configure CMake and run hpxpy.
 
-# Core dependencies (required)
-numpy>=1.20.0
-pybind11>=2.10.0
-
-# Build dependencies
-cmake>=3.18
+# Build dependencies (required to compile _core extension)
+numpy>=1.20
+pybind11>=2.11
 
 # Testing dependencies
-pytest>=7.0.0
-pytest-xdist>=3.0.0  # Parallel test execution
+pytest>=7.0
+pytest-cov>=4.0
+pytest-benchmark>=4.0
+hypothesis>=6.0
 
-# Tutorial dependencies (optional, for running notebooks)
-jupyter>=1.0.0
-matplotlib>=3.5.0
-scipy>=1.7.0
+# Tutorial/example dependencies (for running notebooks)
+jupyter>=1.0
+matplotlib>=3.5
+scipy>=1.7

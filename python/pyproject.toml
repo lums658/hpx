@@ -84,10 +84,12 @@ wheel.packages = ["hpxpy"]
 wheel.install-dir = "hpxpy"
 build-dir = "build/{wheel_tag}"
 
-# Pass HPX_DIR if set in environment
+# Point to HPX install prefix via:
+#   pip install . -C cmake.define.CMAKE_PREFIX_PATH=/path/to/hpx
+#   pip install . -C cmake.define.HPX_ROOT=/path/to/hpx
+# Or set environment variable:
+#   export CMAKE_PREFIX_PATH=/path/to/hpx && pip install .
 [tool.scikit-build.cmake.define]
-# HPX_DIR can be set via environment or command line:
-# pip install . -C cmake.define.HPX_DIR=/path/to/hpx
 
 # ------------------------------------------------------------------------------
 # pytest configuration

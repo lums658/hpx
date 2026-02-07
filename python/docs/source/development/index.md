@@ -4,28 +4,27 @@ Guide for contributing to HPXPy.
 
 ## Getting Started
 
-### Clone the Repository
+### Prerequisites
+
+1. HPX installed at a known prefix (see [Building from Source](../getting_started/building))
+2. Python 3.9+ with a virtual environment
+
+### Set Up Development Environment
 
 ```bash
 git clone https://github.com/STEllAR-GROUP/hpx.git
-cd hpx
-```
+cd hpx/python
 
-### Build HPX with Python Support
+# Install all dependencies (build + test + notebooks)
+pip install -r requirements.txt
 
-```bash
+# Build (point CMAKE_PREFIX_PATH at your HPX install)
 mkdir build && cd build
-cmake .. \
-    -DHPX_WITH_PYTHON=ON \
-    -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-```
+cmake -DCMAKE_PREFIX_PATH=/path/to/hpx ..
+make -j8
 
-### Install Development Dependencies
-
-```bash
-cd python
-pip install -e ".[dev]"
+# Activate runtime environment
+source setup_env.sh
 ```
 
 ## Project Structure
@@ -55,14 +54,17 @@ python/
 ## Running Tests
 
 ```bash
-# Run all tests
-pytest python/tests/
+# Make sure the environment is active
+source build/setup_env.sh
+
+# Run all tests (from python/ directory)
+python -m pytest tests/
 
 # Run with coverage
-pytest python/tests/ --cov=hpxpy
+python -m pytest tests/ --cov=hpxpy
 
 # Run specific test file
-pytest python/tests/unit/test_array.py -v
+python -m pytest tests/unit/test_array.py -v
 ```
 
 ## Building Documentation
@@ -101,7 +103,7 @@ To execute notebooks during documentation builds:
 
 2. **Set up the HPX environment**:
    ```bash
-   source /path/to/hpx/build/setup_env.sh
+   source python/build/setup_env.sh
    ```
 
 3. **Install the Jupyter kernel**:
