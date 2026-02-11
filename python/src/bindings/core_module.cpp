@@ -48,6 +48,9 @@ PYBIND11_MODULE(_core, m) {
     bind_gpu(m);
     bind_sycl(m);
 
+    // Default execution policy (set by CMake HPXPY_DEFAULT_EXECUTION_POLICY)
+    m.attr("default_execution_policy") = HPXPY_DEFAULT_POLICY;
+
     // GPU availability flags
 #ifdef HPXPY_HAVE_CUDA
     m.attr("_has_cuda") = true;

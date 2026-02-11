@@ -104,7 +104,7 @@ inline std::vector<py::ssize_t> compute_reduced_shape(
 }
 
 // Sum reduction (full array)
-// policy: "seq" (default, deterministic), "par" (parallel), "par_unseq" (parallel + SIMD)
+// policy: "seq" (deterministic), "par" (parallel), "par_unseq" (parallel + SIMD, default via CMake)
 py::object sum(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
     if (arr->size() == 0) {
         return py::cast(0.0);
@@ -286,7 +286,7 @@ std::shared_ptr<ndarray> sum_axis(std::shared_ptr<ndarray> arr, int axis, bool k
 }
 
 // Product reduction
-// policy: "seq" (default, deterministic), "par" (parallel), "par_unseq" (parallel + SIMD)
+// policy: "seq" (deterministic), "par" (parallel), "par_unseq" (parallel + SIMD, default via CMake)
 py::object prod(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
     if (arr->size() == 0) {
         return py::cast(1.0);
@@ -310,7 +310,7 @@ py::object prod(std::shared_ptr<ndarray> arr, std::string const& policy = "seq")
 }
 
 // Minimum reduction
-// policy: "seq" (default), "par" (parallel), "par_unseq" (parallel + SIMD)
+// policy: "seq" (deterministic), "par" (parallel), "par_unseq" (parallel + SIMD, default via CMake)
 py::object min(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
     if (arr->size() == 0) {
         throw std::runtime_error("min() arg is an empty sequence");
@@ -338,7 +338,7 @@ py::object min(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") 
 }
 
 // Maximum reduction
-// policy: "seq" (default), "par" (parallel), "par_unseq" (parallel + SIMD)
+// policy: "seq" (deterministic), "par" (parallel), "par_unseq" (parallel + SIMD, default via CMake)
 py::object max(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
     if (arr->size() == 0) {
         throw std::runtime_error("max() arg is an empty sequence");
@@ -364,7 +364,7 @@ py::object max(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") 
 }
 
 // Sort (returns new sorted array)
-// policy: "seq" (default), "par" (parallel), "par_unseq" (parallel + SIMD)
+// policy: "seq" (deterministic), "par" (parallel), "par_unseq" (parallel + SIMD, default via CMake)
 std::shared_ptr<ndarray> sort(std::shared_ptr<ndarray> arr, std::string const& policy = "seq") {
     if (arr->ndim() != 1) {
         throw std::runtime_error("sort only supports 1D arrays in Phase 1");
@@ -417,7 +417,7 @@ std::shared_ptr<ndarray> sort(std::shared_ptr<ndarray> arr, std::string const& p
 }
 
 // Count occurrences of a value
-// policy: "seq" (default), "par" (parallel), "par_unseq" (parallel + SIMD)
+// policy: "seq" (deterministic), "par" (parallel), "par_unseq" (parallel + SIMD, default via CMake)
 py::ssize_t count(std::shared_ptr<ndarray> arr, py::object value, std::string const& policy = "seq") {
     char kind = arr->dtype().kind();
     auto itemsize = arr->dtype().itemsize();

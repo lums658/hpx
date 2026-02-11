@@ -86,12 +86,15 @@ hpx.finalize()  # Clean shutdown
 Control how algorithms execute:
 
 - `hpx.seq` - Sequential execution
-- `hpx.par` - Parallel execution (default)
-- `hpx.par_unseq` - Parallel + vectorized
+- `hpx.par` - Parallel execution
+- `hpx.par_unseq` - Parallel + vectorized (default)
+
+The default policy is `par_unseq`, configurable at build time via the
+`HPXPY_DEFAULT_EXECUTION_POLICY` CMake option.
 
 ```python
-# Explicit parallel execution
-result = hpx.reduce(arr, policy=hpx.par)
+# Explicit sequential execution for debugging
+result = hpx.reduce(arr, policy=hpx.seq)
 ```
 
 ### Device Selection

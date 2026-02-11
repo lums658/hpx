@@ -217,6 +217,7 @@ cmake -DCMAKE_PREFIX_PATH=$HOME/usr/local/hpx -DHPXPY_WITH_SYCL=ON ..
 | Option | Description | Default |
 |--------|-------------|---------|
 | `CMAKE_PREFIX_PATH` | HPX install prefix | *(required)* |
+| `HPXPY_DEFAULT_EXECUTION_POLICY` | Default execution policy (`seq`, `par`, `par_unseq`) | `par_unseq` |
 | `HPXPY_WITH_CUDA` | Enable CUDA GPU support | `OFF` |
 | `HPXPY_WITH_SYCL` | Enable SYCL GPU support | `OFF` |
 | `HPXPY_WITH_TESTS` | Build test targets | `ON` |

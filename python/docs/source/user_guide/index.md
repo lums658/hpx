@@ -51,8 +51,8 @@ Control how algorithms execute:
 | Policy | Description | Use Case |
 |--------|-------------|----------|
 | `hpx.seq` | Sequential | Debugging, small arrays |
-| `hpx.par` | Parallel | Default, large arrays |
-| `hpx.par_unseq` | Parallel + SIMD | Vectorizable operations |
+| `hpx.par` | Parallel | Large arrays, non-vectorizable ops |
+| `hpx.par_unseq` | Parallel + SIMD | Default — large arrays, vectorizable ops |
 
 ```python
 # Explicit policy
@@ -65,13 +65,35 @@ result = hpx.reduce(arr, policy=hpx.par_unseq)
 
 Scale across multiple machines with distributed arrays.
 
+HPXPy supports multi-locality execution using the SPMD (Single Program, Multiple
+Data) pattern. Each locality runs the same worker script as a separate process.
+
 ```python
-# Create distributed array across 4 localities
-arr = hpx.distributed_zeros(1000000, localities=4)
+from hpxpy.launcher import launch_localities
+
+# Launch 4 localities running the same worker script
+results = launch_localities("worker.py", n_localities=4)
+```
+
+Inside the worker script, use partitioned arrays and collectives:
+
+```python
+import hpxpy as hpx
+from hpxpy.launcher import init_from_args
+
+init_from_args()  # Initialize HPX with locality info
+
+# Partitioned arrays (each locality holds a chunk)
+arr = hpx.partitioned_from_numpy(local_data)
+
+# Distributed reductions
+total = hpx.distributed_sum(arr)
 
 # Collective operations
-total = hpx.all_reduce(arr)
-hpx.broadcast(arr, root=0)
+global_result = hpx.all_reduce(local_arr, op='sum')
+hpx.barrier("sync_point")
+
+hpx.finalize()
 ```
 
 See the [Distributed Computing Tutorial](../tutorials/07_distributed_computing) for details.

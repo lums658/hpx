@@ -301,9 +301,13 @@ try:
     from hpxpy._core.distribution import DistributionPolicy
 
     _HPX_AVAILABLE = True
+
+    # Default execution policy, set by CMake (HPXPY_DEFAULT_EXECUTION_POLICY)
+    from hpxpy._core import default_execution_policy as _DEFAULT_POLICY
 except ImportError as e:
     _HPX_AVAILABLE = False
     _IMPORT_ERROR = str(e)
+    _DEFAULT_POLICY = "par_unseq"  # fallback
 
 
 def _check_available() -> None:
@@ -845,7 +849,7 @@ def full(shape, fill_value, dtype=None, device=None):
 # -----------------------------------------------------------------------------
 
 
-def sum(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq"):
+def sum(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = _DEFAULT_POLICY):
     """Sum of array elements.
 
     Parameters
@@ -858,8 +862,8 @@ def sum(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq")
         Type to use for accumulation.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
-    policy : str, default "seq"
-        Execution policy: "seq" (sequential, default), "par" (parallel),
+    policy : str, default "par_unseq" (set by CMake)
+        Execution policy: "seq" (sequential), "par" (parallel),
         or "par_unseq" (parallel + SIMD). Use "par" for large arrays to
         enable multi-threaded execution. Note: "par" may produce
         non-deterministic floating-point results due to reduction order.
@@ -901,7 +905,7 @@ def sum(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq")
         return result
 
 
-def prod(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq"):
+def prod(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = _DEFAULT_POLICY):
     """Product of array elements.
 
     Parameters
@@ -914,8 +918,8 @@ def prod(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq"
         Type to use for accumulation.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
-    policy : str, default "seq"
-        Execution policy: "seq" (sequential, default), "par" (parallel),
+    policy : str, default "par_unseq" (set by CMake)
+        Execution policy: "seq" (sequential), "par" (parallel),
         or "par_unseq" (parallel + SIMD).
 
     Returns
@@ -940,7 +944,7 @@ def prod(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq"
     return _prod(arr, policy)
 
 
-def min(arr, axis=None, keepdims: bool = False, policy: str = "seq"):
+def min(arr, axis=None, keepdims: bool = False, policy: str = _DEFAULT_POLICY):
     """Minimum of array elements.
 
     Parameters
@@ -951,8 +955,8 @@ def min(arr, axis=None, keepdims: bool = False, policy: str = "seq"):
         Axis or axes along which to find minimum.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
-    policy : str, default "seq"
-        Execution policy: "seq" (sequential, default), "par" (parallel),
+    policy : str, default "par_unseq" (set by CMake)
+        Execution policy: "seq" (sequential), "par" (parallel),
         or "par_unseq" (parallel + SIMD).
 
     Returns
@@ -977,7 +981,7 @@ def min(arr, axis=None, keepdims: bool = False, policy: str = "seq"):
     return _min(arr, policy)
 
 
-def max(arr, axis=None, keepdims: bool = False, policy: str = "seq"):
+def max(arr, axis=None, keepdims: bool = False, policy: str = _DEFAULT_POLICY):
     """Maximum of array elements.
 
     Parameters
@@ -988,8 +992,8 @@ def max(arr, axis=None, keepdims: bool = False, policy: str = "seq"):
         Axis or axes along which to find maximum.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
-    policy : str, default "seq"
-        Execution policy: "seq" (sequential, default), "par" (parallel),
+    policy : str, default "par_unseq" (set by CMake)
+        Execution policy: "seq" (sequential), "par" (parallel),
         or "par_unseq" (parallel + SIMD).
 
     Returns
@@ -1014,7 +1018,7 @@ def max(arr, axis=None, keepdims: bool = False, policy: str = "seq"):
     return _max(arr, policy)
 
 
-def mean(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq"):
+def mean(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = _DEFAULT_POLICY):
     """Compute the arithmetic mean.
 
     Parameters
@@ -1027,8 +1031,8 @@ def mean(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq"
         Type to use for computation.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
-    policy : str, default "seq"
-        Execution policy: "seq" (sequential, default), "par" (parallel),
+    policy : str, default "par_unseq" (set by CMake)
+        Execution policy: "seq" (sequential), "par" (parallel),
         or "par_unseq" (parallel + SIMD).
 
     Returns
@@ -1042,7 +1046,7 @@ def mean(arr, axis=None, dtype=None, keepdims: bool = False, policy: str = "seq"
     return _sum(arr, policy) / arr.size
 
 
-def std(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False, policy: str = "seq"):
+def std(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False, policy: str = _DEFAULT_POLICY):
     """Compute the standard deviation.
 
     Parameters
@@ -1057,7 +1061,7 @@ def std(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False, polic
         Delta degrees of freedom.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
-    policy : str, default "seq"
+    policy : str, default "par_unseq" (set by CMake)
         Execution policy: "seq" (sequential), "par" (parallel),
         or "par_unseq" (parallel + SIMD).
 
@@ -1072,7 +1076,7 @@ def std(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False, polic
     return var(arr, ddof=ddof, policy=policy) ** 0.5
 
 
-def var(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False, policy: str = "seq"):
+def var(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False, policy: str = _DEFAULT_POLICY):
     """Compute the variance.
 
     Parameters
@@ -1087,7 +1091,7 @@ def var(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False, polic
         Delta degrees of freedom.
     keepdims : bool, default False
         If True, retain reduced dimensions with size 1.
-    policy : str, default "seq"
+    policy : str, default "par_unseq" (set by CMake)
         Execution policy: "seq" (sequential), "par" (parallel),
         or "par_unseq" (parallel + SIMD).
 
@@ -1115,7 +1119,7 @@ def var(arr, axis=None, dtype=None, ddof: int = 0, keepdims: bool = False, polic
 # -----------------------------------------------------------------------------
 
 
-def sort(arr, axis: int = -1, policy: str = "seq") -> ndarray:
+def sort(arr, axis: int = -1, policy: str = _DEFAULT_POLICY) -> ndarray:
     """Sort an array.
 
     Parameters
@@ -1124,8 +1128,8 @@ def sort(arr, axis: int = -1, policy: str = "seq") -> ndarray:
         Input array.
     axis : int, default -1
         Axis along which to sort. Default is -1 (last axis).
-    policy : str, default "seq"
-        Execution policy: "seq" (sequential, default), "par" (parallel),
+    policy : str, default "par_unseq" (set by CMake)
+        Execution policy: "seq" (sequential), "par" (parallel),
         or "par_unseq" (parallel + SIMD).
 
     Returns
@@ -1151,7 +1155,7 @@ def sort(arr, axis: int = -1, policy: str = "seq") -> ndarray:
     return _sort(arr, policy)
 
 
-def argsort(arr, axis: int = -1, policy: str = "seq") -> ndarray:
+def argsort(arr, axis: int = -1, policy: str = _DEFAULT_POLICY) -> ndarray:
     """Return indices that would sort an array.
 
     Parameters
@@ -1161,7 +1165,7 @@ def argsort(arr, axis: int = -1, policy: str = "seq") -> ndarray:
     axis : int, default -1
         Axis along which to sort. Currently only -1 (last axis) is supported for 1D.
     policy : str, optional
-        Execution policy: "seq" (sequential, default), "par" (parallel),
+        Execution policy: "seq" (sequential), "par" (parallel),
         or "par_unseq" (parallel unsequenced).
 
     Returns
@@ -1193,7 +1197,7 @@ def argsort(arr, axis: int = -1, policy: str = "seq") -> ndarray:
     return _argsort(arr, policy)
 
 
-def count(arr, value, policy: str = "seq") -> int:
+def count(arr, value, policy: str = _DEFAULT_POLICY) -> int:
     """Count occurrences of a value.
 
     Parameters
@@ -1202,8 +1206,8 @@ def count(arr, value, policy: str = "seq") -> int:
         Input array.
     value : scalar
         Value to count.
-    policy : str, default "seq"
-        Execution policy: "seq" (sequential, default), "par" (parallel),
+    policy : str, default "par_unseq" (set by CMake)
+        Execution policy: "seq" (sequential), "par" (parallel),
         or "par_unseq" (parallel + SIMD).
 
     Returns
@@ -1220,7 +1224,7 @@ def count(arr, value, policy: str = "seq") -> int:
 # -----------------------------------------------------------------------------
 
 
-def any(arr, axis=None, policy: str = "seq") -> bool:
+def any(arr, axis=None, policy: str = _DEFAULT_POLICY) -> bool:
     """Check if any element is truthy (non-zero).
 
     Parameters
@@ -1229,7 +1233,7 @@ def any(arr, axis=None, policy: str = "seq") -> bool:
         Input array.
     axis : None
         Not yet supported, must be None.
-    policy : str, default "seq"
+    policy : str, default "par_unseq" (set by CMake)
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1243,7 +1247,7 @@ def any(arr, axis=None, policy: str = "seq") -> bool:
     return _any(arr, policy)
 
 
-def all(arr, axis=None, policy: str = "seq") -> bool:
+def all(arr, axis=None, policy: str = _DEFAULT_POLICY) -> bool:
     """Check if all elements are truthy (non-zero).
 
     Parameters
@@ -1252,7 +1256,7 @@ def all(arr, axis=None, policy: str = "seq") -> bool:
         Input array.
     axis : None
         Not yet supported, must be None.
-    policy : str, default "seq"
+    policy : str, default "par_unseq" (set by CMake)
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1266,7 +1270,7 @@ def all(arr, axis=None, policy: str = "seq") -> bool:
     return _all(arr, policy)
 
 
-def argmin(arr, axis=None, policy: str = "seq"):
+def argmin(arr, axis=None, policy: str = _DEFAULT_POLICY):
     """Return index of minimum element.
 
     Parameters
@@ -1275,7 +1279,7 @@ def argmin(arr, axis=None, policy: str = "seq"):
         Input array.
     axis : None
         Not yet supported, must be None.
-    policy : str, default "seq"
+    policy : str, default "par_unseq" (set by CMake)
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1289,7 +1293,7 @@ def argmin(arr, axis=None, policy: str = "seq"):
     return _argmin(arr, policy)
 
 
-def argmax(arr, axis=None, policy: str = "seq"):
+def argmax(arr, axis=None, policy: str = _DEFAULT_POLICY):
     """Return index of maximum element.
 
     Parameters
@@ -1298,7 +1302,7 @@ def argmax(arr, axis=None, policy: str = "seq"):
         Input array.
     axis : None
         Not yet supported, must be None.
-    policy : str, default "seq"
+    policy : str, default "par_unseq" (set by CMake)
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1312,7 +1316,7 @@ def argmax(arr, axis=None, policy: str = "seq"):
     return _argmax(arr, policy)
 
 
-def diff(arr, n: int = 1, axis: int = -1, policy: str = "seq") -> ndarray:
+def diff(arr, n: int = 1, axis: int = -1, policy: str = _DEFAULT_POLICY) -> ndarray:
     """Calculate n-th discrete difference along given axis.
 
     Parameters
@@ -1323,7 +1327,7 @@ def diff(arr, n: int = 1, axis: int = -1, policy: str = "seq") -> ndarray:
         Number of times values are differenced.
     axis : int, default -1
         Axis along which to compute difference. Only -1 (last axis) supported.
-    policy : str, default "seq"
+    policy : str, default "par_unseq" (set by CMake)
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1339,14 +1343,14 @@ def diff(arr, n: int = 1, axis: int = -1, policy: str = "seq") -> ndarray:
     return _diff(arr, policy)
 
 
-def unique(arr, policy: str = "seq") -> ndarray:
+def unique(arr, policy: str = _DEFAULT_POLICY) -> ndarray:
     """Return sorted unique elements.
 
     Parameters
     ----------
     arr : ndarray
         Input array.
-    policy : str, default "seq"
+    policy : str, default "par_unseq" (set by CMake)
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1369,7 +1373,7 @@ def inclusive_scan(arr, op: str = "add", policy: str = "par") -> ndarray:
         Input array.
     op : str, default "add"
         Binary operation: "add", "mul", "min", "max".
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1401,7 +1405,7 @@ def exclusive_scan(arr, init, op: str = "add", policy: str = "par") -> ndarray:
         Initial value.
     op : str, default "add"
         Binary operation: "add", "mul".
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1433,7 +1437,7 @@ def transform_reduce(arr, transform: str, reduce: str = "add", policy: str = "pa
         Unary transform: "square", "abs", "negate", "identity".
     reduce : str, default "add"
         Binary reduction: "add", "mul", "min", "max".
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1471,7 +1475,7 @@ def reduce_by_key(
         Value array (float64, 1D, same size as keys).
     reduce_op : str, default "add"
         Reduction operation: "add", "mul", "min", "max".
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1500,7 +1504,7 @@ def reduce(arr, op: str = "add", policy: str = "par"):
         Input array (float64).
     op : str, default "add"
         Binary operation: "add", "mul", "min", "max".
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1571,7 +1575,7 @@ def array_equal(arr1, arr2, policy: str = "par") -> bool:
     ----------
     arr1, arr2 : ndarray
         Input arrays to compare (float64).
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1603,7 +1607,7 @@ def flip(arr, policy: str = "par") -> ndarray:
     ----------
     arr : ndarray
         Input array (1D float64).
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1634,7 +1638,7 @@ def stable_sort(arr, policy: str = "par") -> ndarray:
     ----------
     arr : ndarray
         Input array (1D float64).
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1666,7 +1670,7 @@ def roll(arr, shift: int, policy: str = "par") -> ndarray:
         Input array (1D float64).
     shift : int
         Number of positions to roll. Positive shifts elements left (rotate left).
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1735,7 +1739,7 @@ def nth_element(arr, n: int, policy: str = "par"):
         Input array (1D float64).
     n : int
         Index of element to find (0-indexed, negative indices supported).
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy (currently uses std::nth_element).
 
     Returns
@@ -1833,7 +1837,7 @@ def merge_sorted(arr1, arr2, policy: str = "par") -> ndarray:
     ----------
     arr1, arr2 : ndarray
         Sorted input arrays (1D float64).
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy: "seq", "par", or "par_unseq".
 
     Returns
@@ -1862,7 +1866,7 @@ def setdiff1d(arr1, arr2, policy: str = "par") -> ndarray:
     ----------
     arr1, arr2 : ndarray
         Input arrays (1D float64).
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy.
 
     Returns
@@ -1891,7 +1895,7 @@ def intersect1d(arr1, arr2, policy: str = "par") -> ndarray:
     ----------
     arr1, arr2 : ndarray
         Input arrays (1D float64).
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy.
 
     Returns
@@ -1920,7 +1924,7 @@ def union1d(arr1, arr2, policy: str = "par") -> ndarray:
     ----------
     arr1, arr2 : ndarray
         Input arrays (1D float64).
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy.
 
     Returns
@@ -1949,7 +1953,7 @@ def setxor1d(arr1, arr2, policy: str = "par") -> ndarray:
     ----------
     arr1, arr2 : ndarray
         Input arrays (1D float64).
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy.
 
     Returns
@@ -1978,7 +1982,7 @@ def includes(arr1, arr2, policy: str = "par") -> bool:
     ----------
     arr1, arr2 : ndarray
         Input arrays (1D float64).
-    policy : str, default "par"
+    policy : str, default "par_unseq"
         Execution policy.
 
     Returns

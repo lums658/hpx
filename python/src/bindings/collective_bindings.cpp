@@ -15,11 +15,18 @@
 
 #include "ndarray.hpp"
 
+#include <atomic>
+#include <cstdint>
+#include <vector>
+
 namespace py = pybind11;
 
 namespace hpxpy {
 
+// ============================================================================
 // Reduction operation types
+// ============================================================================
+
 enum class ReduceOp {
     Sum,
     Prod,
@@ -27,102 +34,328 @@ enum class ReduceOp {
     Max
 };
 
-// Get the number of localities
+// ============================================================================
+// Serializable element-wise reduction functors for std::vector<double>
+// HPX collectives require serializable operations.
+// ============================================================================
+
+struct vector_sum_op {
+    std::vector<double> operator()(
+        std::vector<double> const& a, std::vector<double> const& b) const
+    {
+        std::vector<double> r(a.size());
+        for (std::size_t i = 0; i < a.size(); ++i)
+            r[i] = a[i] + b[i];
+        return r;
+    }
+
+    template <typename Archive>
+    void serialize(Archive&, unsigned) {}
+};
+
+struct vector_prod_op {
+    std::vector<double> operator()(
+        std::vector<double> const& a, std::vector<double> const& b) const
+    {
+        std::vector<double> r(a.size());
+        for (std::size_t i = 0; i < a.size(); ++i)
+            r[i] = a[i] * b[i];
+        return r;
+    }
+
+    template <typename Archive>
+    void serialize(Archive&, unsigned) {}
+};
+
+struct vector_min_op {
+    std::vector<double> operator()(
+        std::vector<double> const& a, std::vector<double> const& b) const
+    {
+        std::vector<double> r(a.size());
+        for (std::size_t i = 0; i < a.size(); ++i)
+            r[i] = a[i] < b[i] ? a[i] : b[i];
+        return r;
+    }
+
+    template <typename Archive>
+    void serialize(Archive&, unsigned) {}
+};
+
+struct vector_max_op {
+    std::vector<double> operator()(
+        std::vector<double> const& a, std::vector<double> const& b) const
+    {
+        std::vector<double> r(a.size());
+        for (std::size_t i = 0; i < a.size(); ++i)
+            r[i] = a[i] > b[i] ? a[i] : b[i];
+        return r;
+    }
+
+    template <typename Archive>
+    void serialize(Archive&, unsigned) {}
+};
+
+// ============================================================================
+// Generation counters — one per collective type.
+// All localities must call the same collectives in the same order (SPMD contract)
+// so the counters stay synchronized across processes.
+// ============================================================================
+
+static std::atomic<std::size_t> all_reduce_gen{0};
+static std::atomic<std::size_t> broadcast_gen{0};
+static std::atomic<std::size_t> gather_gen{0};
+static std::atomic<std::size_t> scatter_gen{0};
+
+// ============================================================================
+// Helper: convert ndarray to std::vector<double>
+// ============================================================================
+
+static std::vector<double> ndarray_to_vector(ndarray const& arr) {
+    py::array_t<double> np_arr = arr.to_numpy().cast<py::array_t<double>>();
+    auto buf = np_arr.unchecked<1>();
+    std::vector<double> vec(static_cast<std::size_t>(buf.size()));
+    for (py::ssize_t i = 0; i < buf.size(); ++i) {
+        vec[static_cast<std::size_t>(i)] = buf(i);
+    }
+    return vec;
+}
+
+// ============================================================================
+// Helper: convert std::vector<double> to ndarray
+// ============================================================================
+
+static ndarray vector_to_ndarray(std::vector<double> const& vec) {
+    py::array_t<double> np_arr(static_cast<py::ssize_t>(vec.size()));
+    auto buf = np_arr.mutable_unchecked<1>();
+    for (std::size_t i = 0; i < vec.size(); ++i) {
+        buf(static_cast<py::ssize_t>(i)) = vec[i];
+    }
+    return ndarray(np_arr, false);
+}
+
+// ============================================================================
+// Locality introspection
+// ============================================================================
+
 std::uint32_t get_num_localities_impl() {
     return hpx::get_num_localities(hpx::launch::sync);
 }
 
-// Get the current locality ID
 std::uint32_t get_locality_id_impl() {
     return hpx::get_locality_id();
 }
 
-// Barrier synchronization - wait for all localities
+// ============================================================================
+// Barrier synchronization
+// ============================================================================
+
 void barrier_impl(const std::string& name) {
-    // In single-locality mode, this is a no-op
-    // In multi-locality mode, this synchronizes all localities
     if (get_num_localities_impl() > 1) {
-        hpx::distributed::barrier b(name);
-        b.wait();
+        // Must run on an HPX thread — the main Python thread (after hpx::start)
+        // is not an HPX thread, and barrier wait suspends the calling thread
+        // using HPX's scheduler, which requires an HPX thread context.
+        auto f = hpx::async([&name]() {
+            hpx::distributed::barrier b(name);
+            b.wait();
+        });
+        f.get();
     }
-    // Single locality: no barrier needed
 }
 
-// All-reduce: combine values from all localities using the specified operation
-// In single-locality mode, this just returns the input (identity operation)
+// ============================================================================
+// All-reduce: element-wise reduction across all localities
+// ============================================================================
+
 ndarray all_reduce_impl(ndarray const& arr, ReduceOp op) {
-    std::uint32_t num_localities = get_num_localities_impl();
+    std::uint32_t num_locs = get_num_localities_impl();
 
-    if (num_localities == 1) {
-        // Single locality: return a copy of the input
-        // The "reduction" of one value is itself
-        py::array np_arr = arr.to_numpy();
-        return ndarray(np_arr, true);  // copy
-    }
-
-    // Multi-locality: perform actual all_reduce
-    // This requires all localities to participate
-    // TODO: Implement actual distributed all_reduce when multi-locality is enabled
-    // For now, return a copy
-    py::array np_arr = arr.to_numpy();
-    return ndarray(np_arr, true);
-}
-
-// Broadcast: send array from root to all localities
-// In single-locality mode, this just returns the input
-ndarray broadcast_impl(ndarray const& arr, std::uint32_t root) {
-    std::uint32_t num_localities = get_num_localities_impl();
-    std::uint32_t locality_id = get_locality_id_impl();
-
-    if (num_localities == 1) {
-        // Single locality: return a copy of the input
+    if (num_locs == 1) {
         py::array np_arr = arr.to_numpy();
         return ndarray(np_arr, true);
     }
 
-    // Multi-locality: perform actual broadcast
-    // TODO: Implement actual distributed broadcast
-    py::array np_arr = arr.to_numpy();
-    return ndarray(np_arr, true);
+    // Convert to serializable vector (must be done on calling thread with GIL)
+    std::vector<double> local_vec = ndarray_to_vector(arr);
+
+    std::uint32_t this_site = get_locality_id_impl();
+    std::size_t gen = ++all_reduce_gen;
+
+    // Run collective on an HPX thread (main thread after hpx::start is not HPX)
+    auto f = hpx::async([local_vec = std::move(local_vec), op, num_locs, this_site, gen]() mutable {
+        using namespace hpx::collectives;
+
+        switch (op) {
+        case ReduceOp::Sum:
+            return hpx::collectives::all_reduce(
+                "hpxpy_all_reduce_sum", std::move(local_vec), vector_sum_op{},
+                num_sites_arg(num_locs), this_site_arg(this_site),
+                generation_arg(gen)).get();
+        case ReduceOp::Prod:
+            return hpx::collectives::all_reduce(
+                "hpxpy_all_reduce_prod", std::move(local_vec), vector_prod_op{},
+                num_sites_arg(num_locs), this_site_arg(this_site),
+                generation_arg(gen)).get();
+        case ReduceOp::Min:
+            return hpx::collectives::all_reduce(
+                "hpxpy_all_reduce_min", std::move(local_vec), vector_min_op{},
+                num_sites_arg(num_locs), this_site_arg(this_site),
+                generation_arg(gen)).get();
+        case ReduceOp::Max:
+            return hpx::collectives::all_reduce(
+                "hpxpy_all_reduce_max", std::move(local_vec), vector_max_op{},
+                num_sites_arg(num_locs), this_site_arg(this_site),
+                generation_arg(gen)).get();
+        }
+        return std::vector<double>{};  // unreachable
+    });
+
+    return vector_to_ndarray(f.get());
 }
 
-// Gather: collect arrays from all localities to root
-// In single-locality mode, returns a list containing just the input
+// ============================================================================
+// Broadcast: root sends array to all localities
+// ============================================================================
+
+ndarray broadcast_impl(ndarray const& arr, std::uint32_t root) {
+    std::uint32_t num_locs = get_num_localities_impl();
+    std::uint32_t this_site = get_locality_id_impl();
+
+    if (num_locs == 1) {
+        py::array np_arr = arr.to_numpy();
+        return ndarray(np_arr, true);
+    }
+
+    // Convert on calling thread (has GIL)
+    std::vector<double> local_vec = ndarray_to_vector(arr);
+    std::size_t gen = ++broadcast_gen;
+
+    // Run collective on HPX thread
+    auto f = hpx::async([local_vec = std::move(local_vec), root, num_locs, this_site, gen]() mutable {
+        using namespace hpx::collectives;
+
+        if (this_site == root) {
+            return hpx::collectives::broadcast_to(
+                "hpxpy_broadcast", std::move(local_vec),
+                num_sites_arg(num_locs), this_site_arg(this_site),
+                generation_arg(gen)).get();
+        } else {
+            return hpx::collectives::broadcast_from<std::vector<double>>(
+                "hpxpy_broadcast",
+                this_site_arg(this_site), generation_arg(gen),
+                root_site_arg(root)).get();
+        }
+    });
+
+    return vector_to_ndarray(f.get());
+}
+
+// ============================================================================
+// Gather: all localities send to root
+// ============================================================================
+
 py::list gather_impl(ndarray const& arr, std::uint32_t root) {
-    std::uint32_t num_localities = get_num_localities_impl();
+    std::uint32_t num_locs = get_num_localities_impl();
+    std::uint32_t this_site = get_locality_id_impl();
 
     py::list result;
 
-    if (num_localities == 1) {
-        // Single locality: return list with one element
+    if (num_locs == 1) {
         result.append(arr.to_numpy());
         return result;
     }
 
-    // Multi-locality: perform actual gather
-    // TODO: Implement actual distributed gather
-    result.append(arr.to_numpy());
+    // Convert on calling thread (has GIL)
+    std::vector<double> local_vec = ndarray_to_vector(arr);
+    std::size_t gen = ++gather_gen;
+
+    // Run collective on HPX thread; return gathered data (or empty for non-root)
+    auto f = hpx::async([local_vec = std::move(local_vec), root, num_locs, this_site, gen]() mutable
+        -> std::vector<std::vector<double>>
+    {
+        using namespace hpx::collectives;
+
+        if (this_site == root) {
+            return hpx::collectives::gather_here(
+                "hpxpy_gather", std::move(local_vec),
+                num_sites_arg(num_locs), this_site_arg(this_site),
+                generation_arg(gen)).get();
+        } else {
+            hpx::collectives::gather_there(
+                "hpxpy_gather", std::move(local_vec),
+                this_site_arg(this_site), generation_arg(gen),
+                root_site_arg(root)).get();
+            return {};  // non-root gets nothing
+        }
+    });
+
+    // Convert back to Python (needs GIL)
+    auto gathered = f.get();
+    for (auto const& vec : gathered) {
+        py::array_t<double> np_arr(static_cast<py::ssize_t>(vec.size()));
+        auto buf = np_arr.mutable_unchecked<1>();
+        for (std::size_t i = 0; i < vec.size(); ++i) {
+            buf(static_cast<py::ssize_t>(i)) = vec[i];
+        }
+        result.append(np_arr);
+    }
+
     return result;
 }
 
-// Scatter: distribute array from root to all localities
-// In single-locality mode, returns the input unchanged
-ndarray scatter_impl(ndarray const& arr, std::uint32_t root) {
-    std::uint32_t num_localities = get_num_localities_impl();
+// ============================================================================
+// Scatter: root distributes chunks to all localities
+// ============================================================================
 
-    if (num_localities == 1) {
-        // Single locality: return a copy of the input
+ndarray scatter_impl(ndarray const& arr, std::uint32_t root) {
+    std::uint32_t num_locs = get_num_localities_impl();
+    std::uint32_t this_site = get_locality_id_impl();
+
+    if (num_locs == 1) {
         py::array np_arr = arr.to_numpy();
         return ndarray(np_arr, true);
     }
 
-    // Multi-locality: perform actual scatter
-    // TODO: Implement actual distributed scatter
-    py::array np_arr = arr.to_numpy();
-    return ndarray(np_arr, true);
+    // Convert on calling thread (has GIL); only root's data matters
+    std::vector<double> full_vec;
+    if (this_site == root) {
+        full_vec = ndarray_to_vector(arr);
+    }
+    std::size_t gen = ++scatter_gen;
+
+    // Run collective on HPX thread
+    auto f = hpx::async([full_vec = std::move(full_vec), root, num_locs, this_site, gen]() mutable {
+        using namespace hpx::collectives;
+
+        if (this_site == root) {
+            std::size_t chunk_size = full_vec.size() / num_locs;
+
+            std::vector<std::vector<double>> chunks;
+            chunks.reserve(num_locs);
+            for (std::uint32_t i = 0; i < num_locs; ++i) {
+                std::size_t start = i * chunk_size;
+                std::size_t end = (i == num_locs - 1) ? full_vec.size() : start + chunk_size;
+                chunks.emplace_back(full_vec.begin() + start, full_vec.begin() + end);
+            }
+
+            return hpx::collectives::scatter_to(
+                "hpxpy_scatter", std::move(chunks),
+                num_sites_arg(num_locs), this_site_arg(this_site),
+                generation_arg(gen)).get();
+        } else {
+            return hpx::collectives::scatter_from<std::vector<double>>(
+                "hpxpy_scatter",
+                this_site_arg(this_site), generation_arg(gen),
+                root_site_arg(root)).get();
+        }
+    });
+
+    return vector_to_ndarray(f.get());
 }
 
+// ============================================================================
 // Register collective bindings
+// ============================================================================
+
 void register_collective_bindings(py::module_& m) {
     // Reduction operation enum
     py::enum_<ReduceOp>(m, "ReduceOp")
@@ -165,7 +398,7 @@ void register_collective_bindings(py::module_& m) {
         Combine values from all localities using a reduction operation.
 
         Each locality contributes its local array, and all localities receive
-        the combined result.
+        the combined result (element-wise).
 
         Parameters
         ----------
@@ -190,7 +423,7 @@ void register_collective_bindings(py::module_& m) {
         Parameters
         ----------
         arr : ndarray
-            Array to broadcast (only used on root)
+            Array to broadcast (only meaningful on root)
         root : int, optional
             Locality ID to broadcast from (default: 0)
 
@@ -217,7 +450,8 @@ void register_collective_bindings(py::module_& m) {
         Returns
         -------
         list
-            List of arrays from all localities (only valid on root)
+            List of arrays from all localities (only valid on root;
+            non-root localities receive an empty list)
         )doc");
 
     // Scatter

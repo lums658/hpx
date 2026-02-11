@@ -14,14 +14,14 @@ Functions for initializing and managing the HPX runtime.
 ### `init`
 
 ```python
-hpx.init(num_threads: int = None, distributed: bool = False) -> None
+hpx.init(num_threads: int = None, config: list[str] = None) -> None
 ```
 
 Initialize the HPX runtime system.
 
 **Parameters:**
 - `num_threads` - Number of worker threads. If None, uses all available cores.
-- `distributed` - Enable distributed mode for multi-node execution.
+- `config` - Additional HPX configuration options, e.g., `["--hpx:threads=4"]`
 
 **Example:**
 ```python
@@ -55,7 +55,7 @@ Check if the HPX runtime is currently active.
 
 ```python
 @contextmanager
-hpx.runtime(num_threads: int = None, distributed: bool = False)
+hpx.runtime(num_threads: int = None)
 ```
 
 Context manager for automatic runtime management.
@@ -213,12 +213,12 @@ Create an HPXPy array from a NumPy array.
 
 ## Reduction Operations
 
-Parallel reduction functions with execution policy support.
+Parallel reduction functions with execution policy support. The default policy is `'par_unseq'` (configurable via CMake `HPXPY_DEFAULT_EXECUTION_POLICY`).
 
 ### `sum`
 
 ```python
-hpx.sum(arr, axis=None, dtype=None, keepdims=False, policy='seq') -> ndarray | scalar
+hpx.sum(arr, axis=None, dtype=None, keepdims=False, policy='par_unseq') -> ndarray | scalar
 ```
 
 Sum of array elements.
@@ -233,14 +233,14 @@ Sum of array elements.
 **Example:**
 ```python
 arr = hpx.arange(1000000)
-total = hpx.sum(arr)                    # Sequential
-total = hpx.sum(arr, policy='par')      # Parallel (multi-threaded)
+total = hpx.sum(arr)                    # Parallel (default)
+total = hpx.sum(arr, policy='seq')      # Sequential (deterministic)
 ```
 
 ### `prod`
 
 ```python
-hpx.prod(arr, axis=None, dtype=None, keepdims=False, policy='seq') -> ndarray | scalar
+hpx.prod(arr, axis=None, dtype=None, keepdims=False, policy='par_unseq') -> ndarray | scalar
 ```
 
 Product of array elements.
@@ -248,7 +248,7 @@ Product of array elements.
 ### `min`
 
 ```python
-hpx.min(arr, axis=None, keepdims=False, policy='seq') -> ndarray | scalar
+hpx.min(arr, axis=None, keepdims=False, policy='par_unseq') -> ndarray | scalar
 ```
 
 Minimum value.
@@ -256,7 +256,7 @@ Minimum value.
 ### `max`
 
 ```python
-hpx.max(arr, axis=None, keepdims=False, policy='seq') -> ndarray | scalar
+hpx.max(arr, axis=None, keepdims=False, policy='par_unseq') -> ndarray | scalar
 ```
 
 Maximum value.
@@ -288,7 +288,7 @@ Variance.
 ### `reduce`
 
 ```python
-hpx.reduce(arr, op='add', init=None, policy='seq') -> scalar
+hpx.reduce(arr, op='add', init=None, policy='par_unseq') -> scalar
 ```
 
 General parallel reduction with custom operation.
@@ -314,7 +314,7 @@ Deterministic reduction (sequential, reproducible floating-point results).
 ### `sort`
 
 ```python
-hpx.sort(arr, axis=-1, policy='seq') -> ndarray
+hpx.sort(arr, axis=-1, policy='par_unseq') -> ndarray
 ```
 
 Return a sorted copy of an array.
@@ -347,7 +347,7 @@ Currently only supports float64 arrays.
 ### `count`
 
 ```python
-hpx.count(arr, value, policy='seq') -> int
+hpx.count(arr, value, policy='par_unseq') -> int
 ```
 
 Count occurrences of a value.
@@ -697,19 +697,21 @@ Uniform distribution over [low, high).
 
 ## Execution Policies (`hpx.execution`)
 
-Control algorithm parallelization.
+Control algorithm parallelization. The default for all reduction and sorting operations is `'par_unseq'`, configurable at build time via CMake `HPXPY_DEFAULT_EXECUTION_POLICY`.
 
-| Policy | Usage |
-|--------|-------|
-| `hpx.execution.seq` | Sequential execution |
-| `hpx.execution.par` | Parallel execution (multi-threaded) |
-| `hpx.execution.par_unseq` | Parallel + vectorized (SIMD) |
+| Policy | String | Description |
+|--------|--------|-------------|
+| `hpx.execution.seq` | `'seq'` | Sequential execution (deterministic FP order) |
+| `hpx.execution.par` | `'par'` | Parallel execution (multi-threaded) |
+| `hpx.execution.par_unseq` | `'par_unseq'` | Parallel + vectorized (SIMD) — **default** |
 
 **Example:**
 ```python
-# Pass policy to algorithms that support it
-result = hpx.sum(arr, policy='par')
-result = hpx.sort(arr, policy='par')
+# Uses default policy (par_unseq) — parallel
+result = hpx.sum(arr)
+
+# Explicit sequential for deterministic floating-point results
+result = hpx.sum(arr, policy='seq')
 ```
 
 ---
@@ -761,58 +763,70 @@ Same interface as GPU module for Intel, AMD, and Apple GPUs.
 
 ## Distributed Module
 
-### Distributed Array Creation
+### PartitionedArray Creation
+
+Distributed arrays backed by `hpx::partitioned_vector`. Data is automatically partitioned across localities.
 
 ```python
-hpx.distributed_zeros(size, localities) -> ndarray
-hpx.distributed_ones(size, localities) -> ndarray
-hpx.distributed_from_numpy(arr, localities) -> ndarray
+hpx.partitioned_zeros(n) -> PartitionedArray
+hpx.partitioned_ones(n) -> PartitionedArray
+hpx.partitioned_full(n, value) -> PartitionedArray
+hpx.partitioned_arange(start, stop) -> PartitionedArray
+hpx.partitioned_from_numpy(arr) -> PartitionedArray
 ```
 
-### Collective Operations (`hpx.collectives`)
+### Distributed Reductions
+
+Reduce across all partitions (and all localities in multi-locality mode).
 
 | Function | Description |
 |----------|-------------|
-| `all_reduce(arr, op='add')` | Reduce across all localities |
-| `broadcast(arr, root=0)` | Broadcast from root |
-| `gather(arr, root=0)` | Gather to root |
-| `scatter(arr, root=0)` | Scatter from root |
-| `barrier()` | Synchronization barrier |
+| `distributed_sum(arr)` | Sum across all localities |
+| `distributed_mean(arr)` | Mean across all localities |
+| `distributed_min(arr)` | Min across all localities |
+| `distributed_max(arr)` | Max across all localities |
+| `distributed_var(arr)` | Variance across all localities |
+| `distributed_std(arr)` | Std deviation across all localities |
+
+### Collective Operations
+
+Communication primitives for SPMD (Single Program, Multiple Data) patterns.
+
+| Function | Description |
+|----------|-------------|
+| `all_reduce(arr, op='sum')` | Reduce across all localities, result on all |
+| `broadcast(arr, root=0)` | Send data from root to all localities |
+| `gather(arr, root=0)` | Collect data from all localities to root |
+| `scatter(arr, root=0)` | Distribute chunks from root to all |
+| `barrier(name)` | Synchronization barrier |
 
 ---
 
 ## Launcher Module (`hpx.launcher`)
 
-Multi-locality job launching.
+Multi-locality job launching via TCP parcelport.
 
-### `run_distributed`
+### `launch_localities`
 
 ```python
-hpx.launcher.run_distributed(
+hpx.launcher.launch_localities(
     script: str,
-    localities: int,
-    threads_per_locality: int = None,
-    hosts: list[str] = None
-) -> int
+    num_localities: int = 2,
+    threads_per_locality: int = 0,
+    host: str = "localhost",
+    verbose: bool = False,
+) -> list[subprocess.Popen]
 ```
 
-Launch a distributed HPXPy job.
+Launch a Python script across multiple HPX localities. Each locality runs as a separate process connected via TCP.
 
-### `get_locality_id`
+### `init_from_args`
 
 ```python
-hpx.launcher.get_locality_id() -> int
+hpx.launcher.init_from_args(args=None) -> None
 ```
 
-Get current locality ID.
-
-### `get_num_localities`
-
-```python
-hpx.launcher.get_num_localities() -> int
-```
-
-Get total number of localities.
+Initialize HPX runtime from command-line arguments. Parses HPX arguments after `--` separator. Used inside worker scripts launched by `launch_localities()`.
 
 ---
 

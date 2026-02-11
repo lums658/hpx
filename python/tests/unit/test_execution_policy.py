@@ -32,14 +32,13 @@ class TestExecutionPolicySum:
         result = hpx.sum(arr, policy="par_unseq")
         assert result == 499500
 
-    def test_sum_default_is_seq(self, hpx_runtime):
-        """Test that default policy is sequential."""
+    def test_sum_default_policy(self, hpx_runtime):
+        """Test that default policy produces correct results."""
         import hpxpy as hpx
         arr = hpx.arange(1000)
-        # Default should work the same as explicit "seq"
+        # Default policy is set by CMake (par_unseq by default)
         result_default = hpx.sum(arr)
-        result_seq = hpx.sum(arr, policy="seq")
-        assert result_default == result_seq
+        assert result_default == 499500
 
     def test_sum_invalid_policy(self, hpx_runtime):
         """Test that invalid policy raises an error."""

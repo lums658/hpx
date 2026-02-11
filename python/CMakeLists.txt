@@ -61,6 +61,10 @@ option(HPXPY_WITH_CUDA "Enable CUDA support" OFF)
 option(HPXPY_WITH_SYCL "Enable SYCL support" OFF)
 option(HPXPY_WITH_NATIVE_ARCH "Enable -march=native -mtune=native for CPU-specific optimizations" OFF)
 
+set(HPXPY_DEFAULT_EXECUTION_POLICY "par_unseq" CACHE STRING
+    "Default execution policy for HPXPy operations (seq, par, par_unseq)")
+set_property(CACHE HPXPY_DEFAULT_EXECUTION_POLICY PROPERTY STRINGS seq par par_unseq)
+
 # ------------------------------------------------------------------------------
 # Native architecture optimization
 # ------------------------------------------------------------------------------
@@ -230,6 +234,7 @@ target_compile_definitions(_core PRIVATE
   HPXPY_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
   HPXPY_VERSION_MINOR=${PROJECT_VERSION_MINOR}
   HPXPY_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+  HPXPY_DEFAULT_POLICY="${HPXPY_DEFAULT_EXECUTION_POLICY}"
 )
 
 # Apply std::execution workaround if needed
@@ -259,10 +264,14 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   # Enable SIMD vectorization for Release builds
   if(CMAKE_BUILD_TYPE STREQUAL "Release")
     # GCC on ARM uses -mcpu=native; Clang/x86 uses -march=native
+    # NOTE: -ffast-math is intentionally omitted — it causes hpx::reduce(par)
+    # to produce wrong results due to interaction with HPX's header-only
+    # algorithm implementation (ODR violation: HPX compiled without -ffast-math,
+    # but template instantiations here compiled with it).
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64")
-      target_compile_options(_core PRIVATE -mcpu=native -ffast-math -funroll-loops)
+      target_compile_options(_core PRIVATE -mcpu=native -funroll-loops)
     else()
-      target_compile_options(_core PRIVATE -march=native -mtune=native -ffast-math -funroll-loops)
+      target_compile_options(_core PRIVATE -march=native -mtune=native -funroll-loops)
     endif()
     message(STATUS "SIMD optimizations enabled for ${CMAKE_SYSTEM_PROCESSOR}")
   endif()
@@ -371,6 +380,7 @@ message(STATUS "  Build type:       ${CMAKE_BUILD_TYPE}")
 message(STATUS "  CUDA support:     ${HPXPY_WITH_CUDA}")
 message(STATUS "  SYCL support:     ${HPXPY_WITH_SYCL}")
 message(STATUS "  Build tests:      ${HPXPY_WITH_TESTS}")
+message(STATUS "  Default policy:   ${HPXPY_DEFAULT_EXECUTION_POLICY}")
 message(STATUS "  Install dir:      ${HPXPY_INSTALL_PYTHONDIR}/hpxpy")
 message(STATUS "  Install RPATH:    ${CMAKE_INSTALL_RPATH}")
 message(STATUS "")
